@@ -1,0 +1,32 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "type": "npm",
+      "script": "dev:full",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": [],
+      "label": "npm: dev:full",
+      "detail": "프론트엔드와 백엔드를 동시에 실행"
+    },
+    {
+      "type": "npm",
+      "script": "dev",
+      "group": "build",
+      "problemMatcher": [],
+      "label": "npm: dev",
+      "detail": "백엔드 서버 실행"
+    },
+    {
+      "type": "npm",
+      "script": "client",
+      "group": "build",
+      "problemMatcher": [],
+      "label": "npm: client",
+      "detail": "프론트엔드 개발 서버 실행"
+    }
+  ]
+}
