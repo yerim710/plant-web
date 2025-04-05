@@ -66,30 +66,33 @@ def generate_verification_code():
     characters = string.ascii_letters + string.digits
     return ''.join(random.choices(characters, k=6))
 
-# 이메일 설정
+# SMTP 설정
 SMTP_SERVER = "smtp.naver.com"
 SMTP_PORT = 465
-SMTP_USERNAME = os.getenv("SMTP_USERNAME")
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
+SMTP_USERNAME = "yerim8896@naver.com"
+SMTP_PASSWORD = "CYV363B6R7TP"
 
 def send_email(to_email, subject, body):
     try:
-        if not SMTP_USERNAME or not SMTP_PASSWORD:
-            raise ValueError("SMTP_USERNAME 또는 SMTP_PASSWORD 환경 변수가 설정되지 않았습니다.")
-
         msg = MIMEText(body, 'plain', 'utf-8')
         msg['Subject'] = subject
         msg['From'] = SMTP_USERNAME
         msg['To'] = to_email
 
         with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
+            print("SMTP 서버 연결 성공")
             server.login(SMTP_USERNAME, SMTP_PASSWORD)
+            print("SMTP 로그인 성공")
             server.send_message(msg)
+            print("이메일 전송 성공")
 
         return True
     except Exception as e:
-        print(f"이메일 전송 오류: {str(e)}")
+        print(f"이메일 전송 오류 상세: {str(e)}")
         return False
+
+# API 엔드포인트 설정
+API_BASE_URL = "https://ee46-222-111-106-57.ngrok-free.app"
 
 @app.route('/api/send-verification', methods=['POST', 'OPTIONS'])
 def send_verification():
@@ -98,8 +101,10 @@ def send_verification():
         
     try:
         data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'message': '요청 데이터가 없습니다.'}), 400
+            
         email = data.get('email')
-        
         if not email:
             return jsonify({'success': False, 'message': '이메일을 입력해주세요.'}), 400
 
@@ -118,6 +123,7 @@ def send_verification():
         
         감사합니다.
         """)
+        
         if not success:
             return jsonify({'success': False, 'message': '이메일 전송에 실패했습니다.'}), 400
 

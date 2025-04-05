@@ -5,7 +5,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const passwordInput = document.getElementById("password");
   const confirmPasswordInput = document.getElementById("confirmPassword");
   const verificationDiv = document.getElementById("verification");
-  const verificationInput = document.getElementById("verificationCode");
+  const verificationInputs = document.querySelectorAll(
+    ".verification-code-input"
+  );
   const sendVerificationBtn = document.getElementById("sendVerification");
   const confirmVerificationBtn = document.getElementById(
     "confirmVerificationBtn"
@@ -21,7 +23,7 @@ document.addEventListener("DOMContentLoaded", () => {
     !passwordInput ||
     !confirmPasswordInput ||
     !verificationDiv ||
-    !verificationInput ||
+    !verificationInputs ||
     !sendVerificationBtn ||
     !confirmVerificationBtn
   ) {
@@ -71,7 +73,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (data.success) {
         alert("인증 코드가 이메일로 전송되었습니다.");
         verificationDiv.style.display = "block";
-        verificationInput.focus();
+        verificationInputs[0].focus();
       } else {
         alert(data.message || "인증 코드 전송에 실패했습니다.");
       }
@@ -81,10 +83,28 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  // 인증 코드 입력 필드의 이벤트 리스너 추가
+  verificationInputs.forEach((input, index) => {
+    input.addEventListener("input", (e) => {
+      const value = e.target.value;
+      if (value.length === 1 && index < verificationInputs.length - 1) {
+        verificationInputs[index + 1].focus();
+      }
+    });
+
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Backspace" && !e.target.value && index > 0) {
+        verificationInputs[index - 1].focus();
+      }
+    });
+  });
+
   // 인증 코드 확인
   confirmVerificationBtn.addEventListener("click", async () => {
     const email = emailInput.value.trim();
-    const code = verificationInput.value.trim();
+    const code = Array.from(verificationInputs)
+      .map((input) => input.value)
+      .join("");
 
     if (code.length !== 6) {
       alert("인증 코드 6자리를 모두 입력해주세요.");
@@ -105,11 +125,10 @@ document.addEventListener("DOMContentLoaded", () => {
       if (data.success) {
         alert("이메일 인증이 완료되었습니다.");
         isEmailVerified = true;
-        verificationDiv.style.display = "none";
+        verificationInputs.forEach((input) => (input.disabled = true));
         confirmVerificationBtn.disabled = true;
-        emailInput.readOnly = true;
       } else {
-        alert(data.message || "인증 코드가 올바르지 않습니다.");
+        alert(data.message || "인증 코드가 일치하지 않습니다.");
       }
     } catch (error) {
       console.error("인증 코드 확인 오류:", error);

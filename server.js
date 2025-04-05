@@ -52,7 +52,7 @@ app.post("/send-verification", async (req, res) => {
       from: process.env.EMAIL_USER,
       to: email,
       subject: "회원가입 인증 코드",
-      text: `회원가입 인증 코드: ${verificationCode}\n\n이 코드는 10분간 유효합니다.`,
+      text: `회원가입 인증 코드: ${verificationCode}\n\n이 코드는 10분간 유효합니다. 이메일 인증번호를 작성해 주세요`,
     });
 
     // 인증 코드 저장 (10분 후 만료)
