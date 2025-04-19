@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>봉사활동 관리 시스템</title>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/main.css') }}"
+    />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/style.css') }}"
+    />
+  </head>
+  <body>
+    <div class="main-container">
+      <!-- 사용자 정보 표시 영역 -->
+      <div class="user-info-container">
+        <div class="user-info">
+          <span id="userName"></span>
+          <span id="userEmail"></span>
+          <span id="adminStatus"></span>
+          <button id="logoutBtn" class="logout-btn">로그아웃</button>
+        </div>
+      </div>
+
+      <div class="sidebar">
+        <h2>메뉴</h2>
+        <ul>
+          <li><a href="/main">홈</a></li>
+          <li><a href="/register-volunteer">봉사 등록</a></li>
+          <li><a href="/manage-volunteers">봉사 관리</a></li>
+          <li><a href="/profile">프로필</a></li>
+          <li><a href="/admin-verification">관리자 인증</a></li>
+        </ul>
+      </div>
+
+      <div class="main-content">
+        <h1>봉사활동 목록</h1>
+        <div class="volunteer-list" id="volunteerList">
+          <!-- 봉사활동 목록이 여기에 동적으로 추가됩니다 -->
+        </div>
+      </div>
+    </div>
+
+    <!-- 관리자 인증 확인 모달 -->
+    <div id="adminVerificationModal" class="modal">
+      <div class="modal-content">
+        <h2>관리자 인증 필요</h2>
+        <p>
+          봉사활동을 등록하려면 관리자 인증이 필요합니다. 관리자 인증 페이지로
+          이동하시겠습니까?
+        </p>
+        <div class="modal-buttons">
+          <button id="confirmVerificationBtn" class="btn-primary">예</button>
+          <button id="cancelVerificationBtn" class="btn-secondary">
+            아니오
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+  </body>
+</html>

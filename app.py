@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, render_template, redirect, url_for, send_file
 from flask_cors import CORS
 import sqlite3
 import random
@@ -9,53 +9,190 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
 from werkzeug.utils import secure_filename
+import base64
+import time
+import logging
+from flask import session
+from werkzeug.security import check_password_hash
+import pandas as pd
+from io import BytesIO
 
-app = Flask(__name__)
-CORS(app, resources={r"/api/*": {"origins": "*", "methods": ["GET", "POST", "OPTIONS"], "allow_headers": ["Content-Type"]}})
+# 로깅 설정
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
-# 정적 파일 제공
+# 현재 디렉토리의 절대 경로를 구합니다
+current_dir = os.path.dirname(os.path.abspath(__file__))
+logger.debug(f"Current directory: {current_dir}")
+
+app = Flask(__name__, static_folder=current_dir, static_url_path='')
+CORS(app)
+app.secret_key = 'your-secret-key'  # 세션을 위한 비밀 키
+
+@app.after_request
+def after_request(response):
+    response.headers.add('ngrok-skip-browser-warning', 'true')
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    return response
+
 @app.route('/')
-def index():
-    return send_from_directory('.', 'login.html')
+def home():
+    try:
+        if 'user_id' in session:
+            return redirect(url_for('main_page'))
+        return send_from_directory(current_dir, 'login.html')
+    except Exception as e:
+        logger.error(f"홈 페이지 로드 오류: {str(e)}")
+        return send_from_directory(current_dir, 'login.html')
+
+@app.route('/login')
+def login_page():
+    try:
+        if 'user_id' in session:
+            return redirect(url_for('main_page'))
+        return send_from_directory(current_dir, 'login.html')
+    except Exception as e:
+        logger.error(f"로그인 페이지 로드 오류: {str(e)}")
+        return send_from_directory(current_dir, 'login.html')
 
 @app.route('/signup')
 def signup_page():
-    return send_from_directory('.', 'signup.html')
+    try:
+        return send_from_directory(current_dir, 'signup.html')
+    except Exception as e:
+        logger.error(f"회원가입 페이지 로드 오류: {str(e)}")
+        return send_from_directory(current_dir, 'signup.html')
 
 @app.route('/main')
 def main_page():
-    return send_from_directory('.', 'main.html')
+    try:
+        if 'user_id' not in session:
+            return redirect(url_for('home'))
+        return send_from_directory(current_dir, 'main.html')
+    except Exception as e:
+        logger.error(f"메인 페이지 로드 오류: {str(e)}")
+        return redirect(url_for('home'))
 
-# CSS 파일 제공
-@app.route('/<path:filename>')
+@app.route('/static/<path:filename>')
 def serve_static(filename):
-    return send_from_directory('.', filename)
+    try:
+        logger.debug(f"Attempting to serve static file: {filename}")
+        return send_from_directory('static', filename)
+    except Exception as e:
+        logger.error(f"Error serving static file {filename}: {str(e)}")
+        return jsonify({'error': f'Failed to load file: {str(e)}'}), 500
 
 # 인증 코드 저장소
 verification_codes = {}
 
-# 데이터베이스 초기화
+# 데이터베이스 초기화 함수
 def init_db():
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS users
-        (id INTEGER PRIMARY KEY AUTOINCREMENT,
-         name TEXT NOT NULL,
-         email TEXT UNIQUE NOT NULL,
-         password TEXT NOT NULL)
-    ''')
-    
-    # verification_codes 테이블 생성
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS verification_codes
-        (email TEXT PRIMARY KEY,
-         code TEXT NOT NULL,
-         created_at TIMESTAMP NOT NULL)
-    ''')
-    
-    conn.commit()
-    conn.close()
+    print("Starting database initialization")
+    try:
+        # users.db 초기화
+        conn = sqlite3.connect('users.db')
+        c = conn.cursor()
+        
+        # users 테이블 생성
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                email TEXT UNIQUE NOT NULL,
+                password TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # verification_codes 테이블 생성
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS verification_codes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT NOT NULL,
+                code TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP,
+                is_used INTEGER DEFAULT 0
+            )
+        ''')
+        
+        # admin_verifications 테이블 생성
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS admin_verifications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                organization TEXT NOT NULL,
+                representative TEXT NOT NULL,
+                business_number TEXT NOT NULL,
+                office_phone TEXT NOT NULL,
+                address TEXT NOT NULL,
+                manager_phone TEXT NOT NULL,
+                status TEXT DEFAULT 'pending',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+        ''')
+        
+        conn.commit()
+        conn.close()
+        print("users.db 초기화 완료")
+        
+        # volunteer.db 초기화
+        conn = sqlite3.connect('volunteer.db')
+        c = conn.cursor()
+        
+        # volunteers 테이블 생성
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS volunteers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                description TEXT NOT NULL,
+                location TEXT NOT NULL,
+                date TEXT NOT NULL,
+                time TEXT NOT NULL,
+                duration TEXT NOT NULL,
+                max_volunteers INTEGER NOT NULL,
+                current_volunteers INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # posts 테이블 생성
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS posts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        # volunteer_applications 테이블 생성
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS volunteer_applications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,       -- 신청자 ID (users.db의 users 테이블 참조)
+                volunteer_id INTEGER NOT NULL,  -- 봉사활동 ID (volunteers 테이블 참조)
+                applicant_name TEXT NOT NULL,   -- 신청자 이름 (users 테이블에서 가져옴)
+                applicant_email TEXT NOT NULL,  -- 신청자 이메일 (users 테이블에서 가져옴)
+                volunteer_date TEXT NOT NULL,   -- 봉사 활동일자 (volunteers 테이블에서 가져옴)
+                application_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- 신청 날짜
+                status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'rejected')), -- 신청 상태
+                FOREIGN KEY (volunteer_id) REFERENCES volunteers (id)
+                -- user_id는 다른 DB 파일이므로 FOREIGN KEY 제약조건은 주석 처리 또는 애플리케이션 레벨에서 관리
+                -- FOREIGN KEY (user_id) REFERENCES users (id) 
+            )
+        ''')
+        
+        conn.commit()
+        conn.close()
+        print("volunteer.db 초기화 완료")
+        
+    except Exception as e:
+        print(f"데이터베이스 초기화 중 오류 발생: {str(e)}")
+        raise
 
 # 데이터베이스 초기화 실행
 init_db()
@@ -80,19 +217,19 @@ def send_email(to_email, subject, body):
         msg['To'] = to_email
 
         with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
-            print("SMTP 서버 연결 성공")
+            logger.info("SMTP 서버 연결 성공")
             server.login(SMTP_USERNAME, SMTP_PASSWORD)
-            print("SMTP 로그인 성공")
+            logger.info("SMTP 로그인 성공")
             server.send_message(msg)
-            print("이메일 전송 성공")
+            logger.info("이메일 전송 성공")
 
         return True
     except Exception as e:
-        print(f"이메일 전송 오류 상세: {str(e)}")
+        logger.error(f"이메일 전송 오류 상세: {str(e)}")
         return False
 
 # API 엔드포인트 설정
-API_BASE_URL = "https://ee46-222-111-106-57.ngrok-free.app"
+API_BASE_URL = "http://35.232.136.23:5000"
 
 @app.route('/api/send-verification', methods=['POST', 'OPTIONS'])
 def send_verification():
@@ -143,7 +280,7 @@ def send_verification():
         })
 
     except Exception as e:
-        print(f"인증 코드 전송 오류: {str(e)}")
+        logger.error(f"인증 코드 전송 오류: {str(e)}")
         return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/api/verify-code', methods=['POST'])
@@ -214,7 +351,7 @@ def signup():
         # 인증 코드 생성 및 전송
         verification_code = generate_verification_code()
         success = send_email(email, "이메일 인증 코드", f"""
-        안녕하세요,
+        안녕하세요,회원가입해주셔서 감사합니다.
         
         요청하신 이메일 인증 코드는 다음과 같습니다:
         
@@ -243,420 +380,342 @@ def signup():
 
         return jsonify({
             'success': True, 
-            'message': '회원가입이 완료되었습니다. 이메일로 전송된 인증 코드를 확인해주세요.'
+            'message': '회원가입이 완료되었습니다. 로그인페이지로 이동해주세요'
         })
 
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/admin-verification')
+def admin_verification():
+    user_id = session.get('user_id')
+    if not user_id:
+        logger.warning("Admin verification page accessed without login, redirecting.")
+        return redirect(url_for('login'))
+
+    conn = None
+    verification = None
+    try:
+        logger.debug(f"Fetching admin verification status for user_id: {user_id}")
+        conn = sqlite3.connect("users.db")
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT id, organization, status, created_at 
+            FROM admin_verifications 
+            WHERE user_id = ?
+            ORDER BY created_at DESC
+            LIMIT 1
+        """, (user_id,))
+        verification = cursor.fetchone()
+        
+        if verification:
+             logger.debug(f"Found verification record for user {user_id}: ID={verification['id']}, Status={verification['status']}")
+        else:
+             logger.debug(f"No verification record found for user {user_id}.")
+
+    except sqlite3.Error as e:
+        # Log the full traceback for database errors
+        logger.error(f"Database error fetching admin verification for user {user_id}: {str(e)}", exc_info=True)
+        verification = None # Ensure verification is None on error
+    except Exception as e:
+        # Log the full traceback for other errors
+        logger.error(f"Server error fetching admin verification for user {user_id}: {str(e)}", exc_info=True)
+        verification = None # Ensure verification is None on error
+    finally:
+        if conn:
+            logger.debug(f"Closing database connection for user {user_id}.")
+            conn.close()
+            
+    logger.debug(f"Rendering admin_verification.html for user {user_id}.")
+    try:
+        # Render the template, passing the potentially None verification object
+        return render_template('admin_verification.html', verification=verification)
+    except Exception as e:
+        # Catch potential Jinja rendering errors and log the full traceback
+        logger.error(f"Error rendering admin_verification.html template: {str(e)}", exc_info=True)
+        # Return a generic error page or message if rendering fails
+        return "Internal Server Error during template rendering.", 500
+
+@app.route('/api/logout', methods=['POST'])
+def logout():
+    try:
+        session.clear()
+        return jsonify({'success': True, 'message': '로그아웃 되었습니다.'})
+    except Exception as e:
+        logger.error(f"로그아웃 오류: {str(e)}")
+        return jsonify({'success': False, 'message': '로그아웃 중 오류가 발생했습니다.'}), 500
+
+@app.route('/api/current-user')
+def get_current_user():
+    try:
+        if 'user_id' not in session:
+            return jsonify({'success': False, 'message': '로그인이 필요합니다.'}), 401
+            
+        conn = sqlite3.connect('users.db')
+        cursor = conn.cursor()
+        
+        try:
+            # 사용자 정보 조회
+            cursor.execute('''
+                SELECT u.id, u.name, u.email, 
+                       CASE WHEN av.id IS NOT NULL THEN 1 ELSE 0 END as is_admin
+                FROM users u
+                LEFT JOIN admin_verifications av ON u.id = av.user_id
+                WHERE u.id = ?
+            ''', (session['user_id'],))
+            
+            user = cursor.fetchone()
+            if not user:
+                return jsonify({'success': False, 'message': '사용자를 찾을 수 없습니다.'}), 404
+                
+            return jsonify({
+                'success': True,
+                'id': user[0],
+                'name': user[1],
+                'email': user[2],
+                'is_admin': bool(user[3])
+            })
+            
+        except sqlite3.Error as e:
+            logger.error(f"데이터베이스 오류: {str(e)}")
+            return jsonify({'success': False, 'message': '데이터베이스 오류가 발생했습니다.'}), 500
+            
+        finally:
+            conn.close()
+            
+    except Exception as e:
+        logger.error(f"사용자 정보 조회 오류: {str(e)}")
+        return jsonify({'success': False, 'message': '서버 오류가 발생했습니다.'}), 500
+
+@app.route('/api/admin-verification', methods=['POST'])
+def submit_admin_verification():
+    conn = None
+    try:
+        data = request.get_json()
+        if not data:
+            logger.error("요청 데이터가 없습니다.")
+            return jsonify({"success": False, "message": "요청 데이터가 없습니다."}), 400
+
+        user_id = session.get("user_id")
+        if not user_id:
+            logger.error("로그인이 필요합니다.")
+            return jsonify({"success": False, "message": "로그인이 필요합니다."}), 401
+
+        # 필수 필드 검증
+        required_fields = ["organization", "representative", "businessNumber", "officePhone", "address", "managerPhone"]
+        for field in required_fields:
+            if field not in data or not data[field]:
+                logger.error(f"필수 필드 누락: {field}")
+                return jsonify({"success": False, "message": f"{field} 필드는 필수입니다."}), 400
+
+        # 데이터베이스 연결
+        conn = sqlite3.connect("users.db")
+        cursor = conn.cursor()
+        
+        # 데이터베이스에 저장
+        cursor.execute("""
+            INSERT INTO admin_verifications 
+            (user_id, organization, representative, business_number, office_phone, address, manager_phone, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            user_id,
+            data["organization"],
+            data["representative"],
+            data["businessNumber"],
+            data["officePhone"],
+            data["address"],
+            data["managerPhone"],
+            "pending"
+        ))
+        
+        conn.commit()
+        logger.info("관리자 인증 정보가 성공적으로 저장되었습니다.")
+        return jsonify({"success": True, "message": "관리자 인증이 신청되었습니다."})
+        
+    except sqlite3.Error as e:
+        logger.error(f"데이터베이스 오류: {str(e)}")
+        if conn:
+            conn.rollback()
+        return jsonify({"success": False, "message": "데이터베이스 오류가 발생했습니다."}), 500
+        
+    except Exception as e:
+        logger.error(f"서버 오류: {str(e)}")
+        if conn:
+            conn.rollback()
+        return jsonify({"success": False, "message": "서버 오류가 발생했습니다."}), 500
+        
+    finally:
+        if conn:
+            conn.close()
 
 @app.route('/api/login', methods=['POST'])
 def login():
     try:
         data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'message': '요청 데이터가 없습니다.'}), 400
+            
         email = data.get('email')
         password = data.get('password')
-
-        conn = sqlite3.connect('users.db')
-        c = conn.cursor()
-        c.execute('SELECT * FROM users WHERE email = ? AND password = ?',
-                 (email, password))
-        user = c.fetchone()
-        conn.close()
-
-        if user:
-            return jsonify({
-                'success': True,
-                'message': '로그인 성공',
-                'user': {
-                    'id': user[0],
-                    'name': user[1],
-                    'email': user[2]
-                }
-            })
-        else:
-            return jsonify({'success': False, 'message': '이메일 또는 비밀번호가 일치하지 않습니다.'}), 401
-
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-@app.route('/api/volunteer', methods=['POST'])
-def add_volunteer():
-    try:
-        title = request.form.get('title')
-        date = request.form.get('date')
-        location = request.form.get('location')
-        locationDetail = request.form.get('locationDetail')
-        description = request.form.get('description')
         
-        # 이미지 파일 처리
-        image = request.files.get('image')
-        image_path = None
-        if image:
-            filename = secure_filename(image.filename)
-            image_path = os.path.join('uploads', filename)
-            image.save(os.path.join('static', image_path))
-            image_path = f'/static/{image_path}'
-
-        # 데이터베이스에 저장
-        conn = sqlite3.connect('volunteer.db')
+        if not email or not password:
+            return jsonify({'success': False, 'message': '이메일과 비밀번호를 모두 입력해주세요.'}), 400
+        
+        conn = sqlite3.connect('users.db')
         cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO volunteers (title, date, location, locationDetail, description, image_path)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (title, date, location, locationDetail, description, image_path))
-        conn.commit()
-        conn.close()
-
-        return jsonify({'success': True, 'message': '봉사활동이 등록되었습니다.'})
+        
+        try:
+            cursor.execute('SELECT id, password FROM users WHERE email = ?', (email,))
+            user = cursor.fetchone()
+            
+            if not user:
+                return jsonify({'success': False, 'message': '이메일 또는 비밀번호가 올바르지 않습니다.'}), 401
+                
+            if user[1] == password:  # 비밀번호가 해싱되지 않은 경우
+                session['user_id'] = user[0]
+                return jsonify({'success': True, 'redirect': '/main'})
+            else:
+                return jsonify({'success': False, 'message': '이메일 또는 비밀번호가 올바르지 않습니다.'}), 401
+                
+        except sqlite3.Error as e:
+            logger.error(f"데이터베이스 오류: {str(e)}")
+            return jsonify({'success': False, 'message': '데이터베이스 오류가 발생했습니다.'}), 500
+            
+        finally:
+            conn.close()
+            
     except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
+        logger.error(f"로그인 오류: {str(e)}")
+        return jsonify({'success': False, 'message': '서버 오류가 발생했습니다.'}), 500
 
-# 이미지 업로드를 위한 디렉토리 생성
-os.makedirs(os.path.join('static', 'uploads'), exist_ok=True)
+@app.route('/register-volunteer')
+def register_volunteer_page():
+    # 로그인 여부 확인 등 필요시 추가
+    # if 'user_id' not in session:
+    #     return redirect(url_for('login'))
+    logger.debug("Rendering register_volunteer.html page.")
+    return render_template('register_volunteer.html')
 
-# 게시판 관련 API
-@app.route('/api/posts', methods=['GET'])
-def get_posts():
-    try:
-        conn = sqlite3.connect('volunteer.db')
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT id, title, author, created_at, views 
-            FROM posts 
-            ORDER BY created_at DESC
-        ''')
-        posts = cursor.fetchall()
-        conn.close()
-
-        return jsonify({
-            'success': True,
-            'posts': [{
-                'id': post[0],
-                'title': post[1],
-                'author': post[2],
-                'created_at': post[3],
-                'views': post[4]
-            } for post in posts]
-        })
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-@app.route('/api/posts', methods=['POST'])
-def create_post():
-    try:
-        title = request.form.get('title')
-        content = request.form.get('content')
-        author = request.form.get('author')
-        image = request.files.get('image')
-
-        if not all([title, content, author]):
-            return jsonify({'success': False, 'message': '모든 필드를 입력해주세요.'}), 400
-
-        image_path = None
-        if image:
-            filename = secure_filename(image.filename)
-            image_path = os.path.join('uploads', filename)
-            image.save(os.path.join('static', image_path))
-            image_path = f'/static/{image_path}'
-
-        conn = sqlite3.connect('volunteer.db')
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO posts (title, content, author, created_at, views, image_path)
-            VALUES (?, ?, ?, datetime('now'), 0, ?)
-        ''', (title, content, author, image_path))
-        conn.commit()
-        conn.close()
-
-        return jsonify({'success': True, 'message': '게시글이 등록되었습니다.'})
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-@app.route('/api/posts/<int:post_id>', methods=['GET'])
-def get_post(post_id):
-    try:
-        conn = sqlite3.connect('volunteer.db')
-        cursor = conn.cursor()
-        cursor.execute('''
-            UPDATE posts SET views = views + 1 WHERE id = ?
-        ''', (post_id,))
-        cursor.execute('''
-            SELECT id, title, content, author, created_at, views, image_path 
-            FROM posts 
-            WHERE id = ?
-        ''', (post_id,))
-        post = cursor.fetchone()
-        conn.commit()
-        conn.close()
-
-        if post:
-            return jsonify({
-                'success': True,
-                'post': {
-                    'id': post[0],
-                    'title': post[1],
-                    'content': post[2],
-                    'author': post[3],
-                    'created_at': post[4],
-                    'views': post[5],
-                    'image_path': post[6]
-                }
-            })
-        else:
-            return jsonify({'success': False, 'message': '게시글을 찾을 수 없습니다.'}), 404
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-# 식물 관련 API
-@app.route('/api/plants', methods=['GET'])
-def get_plants():
-    try:
-        conn = sqlite3.connect('volunteer.db')
-        cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS plants (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                species TEXT NOT NULL,
-                watering_frequency INTEGER NOT NULL,
-                last_watered DATETIME,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        cursor.execute('SELECT * FROM plants ORDER BY created_at DESC')
-        plants = cursor.fetchall()
-        conn.close()
-
-        return jsonify({
-            'success': True,
-            'plants': [{
-                'id': plant[0],
-                'name': plant[1],
-                'species': plant[2],
-                'watering_frequency': plant[3],
-                'last_watered': plant[4],
-                'created_at': plant[5]
-            } for plant in plants]
-        })
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-@app.route('/api/plants', methods=['POST'])
-def create_plant():
-    try:
-        data = request.json
-        name = data.get('name')
-        species = data.get('species')
-        watering_frequency = data.get('watering_frequency')
-
-        if not all([name, species, watering_frequency]):
-            return jsonify({'success': False, 'message': '모든 필드를 입력해주세요.'}), 400
-
-        conn = sqlite3.connect('volunteer.db')
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO plants (name, species, watering_frequency, last_watered)
-            VALUES (?, ?, ?, datetime('now'))
-        ''', (name, species, watering_frequency))
-        conn.commit()
-        conn.close()
-
-        return jsonify({'success': True, 'message': '식물이 등록되었습니다.'})
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-@app.route('/api/plants/<int:plant_id>/water', methods=['POST'])
-def water_plant(plant_id):
-    try:
-        conn = sqlite3.connect('volunteer.db')
-        cursor = conn.cursor()
-        cursor.execute('''
-            UPDATE plants 
-            SET last_watered = datetime('now')
-            WHERE id = ?
-        ''', (plant_id,))
-        conn.commit()
-        conn.close()
-
-        return jsonify({'success': True, 'message': '물주기가 완료되었습니다.'})
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-@app.route('/api/plants/<int:plant_id>', methods=['DELETE'])
-def delete_plant(plant_id):
-    try:
-        conn = sqlite3.connect('volunteer.db')
-        cursor = conn.cursor()
-        cursor.execute('DELETE FROM plants WHERE id = ?', (plant_id,))
-        conn.commit()
-        conn.close()
-
-        return jsonify({'success': True, 'message': '식물이 삭제되었습니다.'})
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-# 데이터베이스 초기화
-def init_db():
-    conn = sqlite3.connect('volunteer.db')
-    cursor = conn.cursor()
+@app.route('/manage-volunteers')
+def manage_volunteers():
+    # 관리자만 접근 가능하도록 체크 (예시: 세션 또는 데코레이터 사용)
+    # if not session.get('is_admin'):
+    #     flash('관리자 권한이 필요합니다.', 'warning')
+    #     return redirect(url_for('main_page'))
     
-    # 봉사활동 테이블 생성
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS volunteers (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT NOT NULL,
-            date TEXT NOT NULL,
-            location TEXT NOT NULL,
-            locationDetail TEXT NOT NULL,
-            description TEXT NOT NULL,
-            image_path TEXT
+    conn_v = None
+    applications = []
+    try:
+        conn_v = sqlite3.connect('volunteer.db')
+        conn_v.row_factory = sqlite3.Row
+        cursor_v = conn_v.cursor()
+        
+        # 모든 봉사 신청 내역 조회 (JOIN 없이 volunteer_applications 테이블만 사용)
+        cursor_v.execute("""
+            SELECT id, applicant_name, applicant_email, volunteer_date, application_date, status
+            FROM volunteer_applications
+            ORDER BY application_date DESC
+        """)
+        applications = cursor_v.fetchall()
+        logger.debug(f"Fetched {len(applications)} volunteer applications.")
+        
+    except sqlite3.Error as e:
+        logger.error(f"봉사 신청 목록 조회 중 데이터베이스 오류: {str(e)}", exc_info=True)
+        flash("신청 목록을 불러오는 중 오류가 발생했습니다.", "error")
+    except Exception as e:
+        logger.error(f"봉사 신청 목록 조회 중 서버 오류: {str(e)}", exc_info=True)
+        flash("신청 목록을 불러오는 중 오류가 발생했습니다.", "error")
+    finally:
+        if conn_v:
+            conn_v.close()
+            
+    return render_template('manage_volunteers.html', applications=applications)
+
+@app.route('/api/update-application-status', methods=['POST'])
+def update_application_status():
+    # 관리자 권한 체크 필요
+    data = request.get_json()
+    application_ids = data.get('ids')
+    new_status = data.get('status') # 'approved' 또는 'rejected'
+
+    if not application_ids or not new_status or new_status not in ['approved', 'rejected']:
+        logger.warning(f"Invalid data received for status update: ids={application_ids}, status={new_status}")
+        return jsonify({'success': False, 'message': '잘못된 요청입니다.'}), 400
+
+    conn_v = None
+    updated_count = 0
+    try:
+        conn_v = sqlite3.connect('volunteer.db')
+        cursor_v = conn_v.cursor()
+        
+        # ID 목록을 사용하여 상태 업데이트 (SQL 인젝션 방지)
+        placeholders = ','.join('?' * len(application_ids))
+        sql = f"UPDATE volunteer_applications SET status = ? WHERE id IN ({placeholders}) AND status = 'pending'" # 대기 중인 신청만 변경
+        
+        params = [new_status] + application_ids
+        cursor_v.execute(sql, params)
+        updated_count = cursor_v.rowcount # 변경된 행의 수
+        conn_v.commit()
+        logger.info(f"Updated status to '{new_status}' for {updated_count} applications: IDs={application_ids}")
+        
+        return jsonify({'success': True, 'message': f'{updated_count}건의 신청 상태가 변경되었습니다.', 'updated_count': updated_count})
+
+    except sqlite3.Error as e:
+        logger.error(f"봉사 신청 상태 업데이트 중 데이터베이스 오류: {str(e)}", exc_info=True)
+        if conn_v:
+            conn_v.rollback()
+        return jsonify({'success': False, 'message': '데이터베이스 오류가 발생했습니다.'}), 500
+    except Exception as e:
+        logger.error(f"봉사 신청 상태 업데이트 중 서버 오류: {str(e)}", exc_info=True)
+        if conn_v:
+            conn_v.rollback()
+        return jsonify({'success': False, 'message': '서버 오류가 발생했습니다.'}), 500
+    finally:
+        if conn_v:
+            conn_v.close()
+            
+@app.route('/download-applications')
+def download_applications():
+    # 관리자 권한 체크 필요
+    conn_v = None
+    try:
+        conn_v = sqlite3.connect('volunteer.db')
+        # Pandas를 사용하여 데이터베이스 테이블 읽기
+        df = pd.read_sql_query("SELECT id as 순번, applicant_name as 회원명, applicant_email as 회원ID, volunteer_date as 활동일자, application_date as 신청날짜, status as 상태 FROM volunteer_applications ORDER BY application_date DESC", conn_v)
+        
+        # 날짜 형식 변환 (선택 사항)
+        if '신청날짜' in df.columns:
+             df['신청날짜'] = pd.to_datetime(df['신청날짜']).dt.strftime('%Y-%m-%d %H:%M:%S')
+             
+        # BytesIO를 사용하여 메모리에서 엑셀 파일 생성
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='봉사신청자목록')
+        output.seek(0)
+        
+        logger.info("Generated Excel file for volunteer applications.")
+        
+        # 파일 다운로드 응답 생성
+        return send_file(
+            output, 
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 
+            download_name='봉사신청자_목록.xlsx', 
+            as_attachment=True
         )
-    ''')
-    
-    # 게시판 테이블 생성
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS posts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT NOT NULL,
-            content TEXT NOT NULL,
-            author TEXT NOT NULL,
-            created_at DATETIME NOT NULL,
-            views INTEGER DEFAULT 0,
-            image_path TEXT
-        )
-    ''')
-    
-    # 식물 테이블 생성
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS plants (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            species TEXT NOT NULL,
-            watering_frequency INTEGER NOT NULL,
-            last_watered DATETIME,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    # 테스트 데이터 추가
-    cursor.execute('''
-        INSERT OR IGNORE INTO volunteers (title, date, location, locationDetail, description)
-        VALUES (?, ?, ?, ?, ?)
-    ''', ('테스트 봉사활동', '2024-03-20', '서울시 강남구', '강남역 1번 출구', '이것은 테스트 봉사활동입니다.'))
-    
-    cursor.execute('''
-        INSERT OR IGNORE INTO posts (title, content, author, created_at, views)
-        VALUES (?, ?, ?, datetime('now'), 0)
-    ''', ('테스트 게시글', '이것은 테스트 게시글입니다.', 'test@example.com'))
-    
-    cursor.execute('''
-        INSERT OR IGNORE INTO plants (name, species, watering_frequency, last_watered)
-        VALUES (?, ?, ?, datetime('now'))
-    ''', ('테스트 식물', '선인장', 7))
-    
-    conn.commit()
-    conn.close()
 
-# 데이터베이스 초기화
-init_db()
-
-# 봉사활동 관련 API
-@app.route('/api/volunteers', methods=['GET'])
-def get_volunteers():
-    try:
-        conn = sqlite3.connect('volunteer.db')
-        cursor = conn.cursor()
-        cursor.execute('SELECT * FROM volunteers ORDER BY date DESC')
-        volunteers = cursor.fetchall()
-        conn.close()
-
-        return jsonify({
-            'success': True,
-            'volunteers': [{
-                'id': volunteer[0],
-                'title': volunteer[1],
-                'date': volunteer[2],
-                'location': volunteer[3],
-                'locationDetail': volunteer[4],
-                'description': volunteer[5],
-                'image_path': volunteer[6]
-            } for volunteer in volunteers]
-        })
+    except sqlite3.Error as e:
+        logger.error(f"엑셀 다운로드 중 데이터베이스 오류: {str(e)}", exc_info=True)
+        flash("엑셀 파일 생성 중 오류가 발생했습니다.", "error")
+        return redirect(url_for('manage_volunteers'))
     except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-@app.route('/api/volunteers', methods=['POST'])
-def create_volunteer():
-    try:
-        title = request.form.get('title')
-        date = request.form.get('date')
-        location = request.form.get('location')
-        locationDetail = request.form.get('locationDetail')
-        description = request.form.get('description')
-        image = request.files.get('image')
-
-        if not all([title, date, location, locationDetail, description]):
-            return jsonify({'success': False, 'message': '모든 필드를 입력해주세요.'}), 400
-
-        image_path = None
-        if image:
-            filename = secure_filename(image.filename)
-            image_path = os.path.join('uploads', filename)
-            image.save(os.path.join('static', image_path))
-            image_path = f'/static/{image_path}'
-
-        conn = sqlite3.connect('volunteer.db')
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO volunteers (title, date, location, locationDetail, description, image_path)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (title, date, location, locationDetail, description, image_path))
-        conn.commit()
-        conn.close()
-
-        return jsonify({'success': True, 'message': '봉사활동이 등록되었습니다.'})
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-@app.route('/api/volunteers/<int:volunteer_id>', methods=['GET'])
-def get_volunteer(volunteer_id):
-    try:
-        conn = sqlite3.connect('volunteer.db')
-        cursor = conn.cursor()
-        cursor.execute('SELECT * FROM volunteers WHERE id = ?', (volunteer_id,))
-        volunteer = cursor.fetchone()
-        conn.close()
-
-        if volunteer:
-            return jsonify({
-                'success': True,
-                'volunteer': {
-                    'id': volunteer[0],
-                    'title': volunteer[1],
-                    'date': volunteer[2],
-                    'location': volunteer[3],
-                    'locationDetail': volunteer[4],
-                    'description': volunteer[5],
-                    'image_path': volunteer[6]
-                }
-            })
-        else:
-            return jsonify({'success': False, 'message': '봉사활동을 찾을 수 없습니다.'}), 404
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-@app.route('/api/volunteers/<int:volunteer_id>', methods=['DELETE'])
-def delete_volunteer(volunteer_id):
-    try:
-        conn = sqlite3.connect('volunteer.db')
-        cursor = conn.cursor()
-        cursor.execute('DELETE FROM volunteers WHERE id = ?', (volunteer_id,))
-        conn.commit()
-        conn.close()
-
-        return jsonify({'success': True, 'message': '봉사활동이 삭제되었습니다.'})
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
+        logger.error(f"엑셀 다운로드 중 오류: {str(e)}", exc_info=True)
+        flash("엑셀 파일 생성 중 오류가 발생했습니다.", "error")
+        return redirect(url_for('manage_volunteers'))
+    finally:
+        if conn_v:
+            conn_v.close()
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True) 

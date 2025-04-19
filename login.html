@@ -25,8 +25,12 @@
             <input type="checkbox" id="rememberMe" name="rememberMe" />
             <span>로그인 상태 유지</span>
           </label>
-          <a href="find-password.html" class="forgot-password">비밀번호 찾기</a>
+          <a href="#" id="forgotPassword" class="forgot-password"
+            >비밀번호 찾기</a
+          >
         </div>
+
+        <div id="loginMessage" class="message" style="display: none"></div>
 
         <button type="submit" class="btn">로그인</button>
       </form>
@@ -34,6 +38,74 @@
         계정이 없으신가요? <a href="signup.html">회원가입</a>
       </div>
     </div>
-    <script src="login.js"></script>
+
+    <!-- 비밀번호 찾기 모달 -->
+    <div id="findPasswordModal" class="modal">
+      <div class="modal-content">
+        <span id="closeFindPasswordModal" class="close">&times;</span>
+        <h3>비밀번호 찾기</h3>
+        <div class="form-group">
+          <label for="findEmail">이메일</label>
+          <input type="email" id="findEmail" required />
+        </div>
+        <div
+          id="tempPasswordMessage"
+          class="message"
+          style="display: none"
+        ></div>
+        <button id="sendTempPassword" class="btn">임시 비밀번호 전송</button>
+      </div>
+    </div>
+
+    <script>
+      // 현재 사용자의 로그인 상태 확인
+      async function checkLoginStatus() {
+        try {
+          const response = await fetch("/api/current-user");
+          const data = await response.json();
+
+          if (data.success) {
+            window.location.href = "/main";
+          }
+        } catch (error) {
+          console.error("로그인 상태 확인 중 오류:", error);
+        }
+      }
+
+      // 페이지 로드 시 로그인 상태 확인
+      document.addEventListener("DOMContentLoaded", checkLoginStatus);
+
+      // 로그인 폼 제출 처리
+      document
+        .getElementById("loginForm")
+        .addEventListener("submit", async function (e) {
+          e.preventDefault();
+
+          const email = document.getElementById("email").value;
+          const password = document.getElementById("password").value;
+
+          try {
+            const response = await fetch("/api/login", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ email, password }),
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+              alert("로그인 성공!");
+              window.location.href = "/main"; // 로그인 성공 시 메인 페이지로 이동
+            } else {
+              alert(data.message || "로그인에 실패했습니다.");
+            }
+          } catch (error) {
+            console.error("로그인 중 오류:", error);
+            alert("로그인 중 오류가 발생했습니다.");
+          }
+        });
+    </script>
   </body>
 </html>

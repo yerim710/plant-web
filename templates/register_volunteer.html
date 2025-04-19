@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>봉사 등록</title>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/main.css') }}"
+    />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/style.css') }}"
+    />
+  </head>
+  <body>
+    <div class="main-container">
+      <div class="user-info-container">
+        <div class="user-info">
+          <span id="userName"></span>
+          <span id="userEmail"></span>
+          <span id="adminStatus"></span>
+          <button id="logoutBtn" class="logout-btn">로그아웃</button>
+        </div>
+      </div>
+
+      <div class="sidebar">
+        <h2>메뉴</h2>
+        <ul>
+          <li><a href="/main">홈</a></li>
+          <li><a href="/register-volunteer" class="active">봉사 등록</a></li>
+          <!-- 활성화 -->
+          <li><a href="/manage-volunteers">봉사 관리</a></li>
+          <li><a href="/profile">프로필</a></li>
+          <li><a href="/admin-verification">관리자 인증</a></li>
+        </ul>
+      </div>
+
+      <div class="main-content">
+        <div class="form-container">
+          <h2>봉사 활동 등록</h2>
+          <form id="registerVolunteerForm">
+            <div class="form-group">
+              <label for="title">제목</label>
+              <input type="text" id="title" name="title" required />
+            </div>
+            <div class="form-group">
+              <label for="description">설명</label>
+              <textarea id="description" name="description" required></textarea>
+            </div>
+            <div class="form-group">
+              <label for="location">장소</label>
+              <input type="text" id="location" name="location" required />
+            </div>
+            <div class="form-group">
+              <label for="date">활동 날짜</label>
+              <input type="date" id="date" name="date" required />
+            </div>
+            <div class="form-group">
+              <label for="time">활동 시간</label>
+              <input type="time" id="time" name="time" required />
+            </div>
+            <div class="form-group">
+              <label for="duration">예상 소요 시간</label>
+              <input
+                type="text"
+                id="duration"
+                name="duration"
+                placeholder="예: 2시간"
+                required
+              />
+            </div>
+            <div class="form-group">
+              <label for="max_volunteers">모집 인원</label>
+              <input
+                type="number"
+                id="max_volunteers"
+                name="max_volunteers"
+                min="1"
+                required
+              />
+            </div>
+            <button type="submit" class="btn-submit">등록하기</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // 사용자 정보 로드, 로그아웃 등 필요한 스크립트 추가
+      async function loadUserInfo() {
+        /* ... */
+      }
+      document
+        .getElementById("logoutBtn")
+        .addEventListener("click", async () => {
+          /* ... */
+        });
+      document.addEventListener("DOMContentLoaded", loadUserInfo);
+
+      // 폼 제출 처리 (나중에 API 엔드포인트 만들고 연결해야 함)
+      const registerForm = document.getElementById("registerVolunteerForm");
+      if (registerForm) {
+        registerForm.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          // 폼 데이터 가져오기
+          const formData = new FormData(registerForm);
+          const data = Object.fromEntries(formData.entries());
+
+          // API 호출 (예시 - 실제 API 엔드포인트 필요)
+          alert("봉사 등록 기능은 아직 구현되지 않았습니다.");
+          console.log("등록할 봉사 정보:", data);
+          try {
+            const response = await fetch(
+              `${API_BASE_URL}/api/register-volunteer`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(data),
+              }
+            );
+            const result = await response.json();
+            if (result.success) {
+              alert("봉사 활동이 성공적으로 등록되었습니다.");
+              window.location.href = "/main"; // 또는 다른 페이지로 이동
+            } else {
+              alert(result.message || "봉사 등록에 실패했습니다.");
+            }
+          } catch (error) {
+            console.error("봉사 등록 중 오류:", error);
+            alert("봉사 등록 중 오류가 발생했습니다.");
+          }
+        });
+      }
+    </script>
+  </body>
+</html>

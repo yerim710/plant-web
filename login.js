@@ -108,7 +108,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // 로그인 처리
-  loginForm.addEventListener("submit", (e) => {
+  loginForm.addEventListener("submit", async (e) => {
     e.preventDefault();
 
     const email = emailInput.value.trim();
@@ -127,30 +127,39 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    // 사용자 검증
-    const users = JSON.parse(localStorage.getItem("users") || "[]");
-    const user = users.find(
-      (u) => u.email === email && u.password === password
-    );
+    try {
+      const response = await fetch("http://localhost:5000/api/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, password }),
+      });
 
-    if (user) {
-      // 로그인 상태 저장
-      localStorage.setItem("isLoggedIn", "true");
-      localStorage.setItem("currentUser", JSON.stringify(user));
+      const data = await response.json();
 
-      // 로그인 상태 유지 처리
-      if (rememberMe) {
-        localStorage.setItem("savedEmail", email);
+      if (data.success) {
+        // 로그인 상태 저장
+        localStorage.setItem("isLoggedIn", "true");
+        localStorage.setItem("currentUser", JSON.stringify(data.user));
+
+        // 로그인 상태 유지 처리
+        if (rememberMe) {
+          localStorage.setItem("savedEmail", email);
+        } else {
+          localStorage.removeItem("savedEmail");
+        }
+
+        showMessage("로그인 성공! 메인 페이지로 이동합니다.");
+        setTimeout(() => {
+          window.location.href = "main.html";
+        }, 1000);
       } else {
-        localStorage.removeItem("savedEmail");
+        showMessage(data.message || "로그인에 실패했습니다.", true);
       }
-
-      showMessage("로그인 성공! 메인 페이지로 이동합니다.", "success");
-      setTimeout(() => {
-        window.location.href = "main.html";
-      }, 1000);
-    } else {
-      showMessage("이메일 또는 비밀번호가 일치하지 않습니다.", true);
+    } catch (error) {
+      console.error("로그인 오류:", error);
+      showMessage("로그인 처리 중 오류가 발생했습니다.", true);
     }
   });
 

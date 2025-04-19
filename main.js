@@ -111,16 +111,26 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const formData = new FormData();
     formData.append("title", document.getElementById("title").value);
-    formData.append("date", document.getElementById("date").value);
+    formData.append("hours", document.getElementById("hours").value);
+    formData.append("days", document.getElementById("days").value);
+    formData.append("target", document.getElementById("target").value);
     formData.append("location", document.getElementById("location").value);
     formData.append(
       "locationDetail",
       document.getElementById("locationDetail").value
     );
-    formData.append(
-      "description",
-      document.getElementById("description").value
-    );
+    formData.append("details", document.getElementById("details").value);
+    formData.append("start_date", document.getElementById("start_date").value);
+    formData.append("end_date", document.getElementById("end_date").value);
+
+    // 시작일과 종료일 유효성 검사
+    const startDate = new Date(document.getElementById("start_date").value);
+    const endDate = new Date(document.getElementById("end_date").value);
+
+    if (startDate > endDate) {
+      showMessage("종료일은 시작일보다 늦어야 합니다.", true);
+      return;
+    }
 
     // 이미지 파일 추가
     const imageFile = imageInput.files[0];
@@ -156,11 +166,21 @@ document.addEventListener("DOMContentLoaded", () => {
     const volunteerElement = document.createElement("div");
     volunteerElement.className = "volunteer-item";
 
+    // 날짜 포맷팅 함수
+    const formatDate = (dateString) => {
+      const date = new Date(dateString);
+      return date.toLocaleDateString("ko-KR", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+    };
+
     volunteerElement.innerHTML = `
             <h3>${volunteer.title}</h3>
             ${
-              volunteer.image
-                ? `<div class="volunteer-image"><img src="${volunteer.image}" alt="봉사 사진"></div>`
+              volunteer.image_path
+                ? `<div class="volunteer-image"><img src="${volunteer.image_path}" alt="봉사 사진"></div>`
                 : ""
             }
             <div class="volunteer-info">
@@ -179,6 +199,12 @@ document.addEventListener("DOMContentLoaded", () => {
                 <div class="info-group">
                     <label>봉사 대상</label>
                     <div>${volunteer.target}</div>
+                </div>
+                <div class="info-group">
+                    <label>활동 기간</label>
+                    <div>${formatDate(volunteer.start_date)} ~ ${formatDate(
+      volunteer.end_date
+    )}</div>
                 </div>
             </div>
             <div class="details">
@@ -201,6 +227,8 @@ document.addEventListener("DOMContentLoaded", () => {
       document.getElementById("days").value = volunteer.days;
       document.getElementById("target").value = volunteer.target;
       document.getElementById("details").value = volunteer.details;
+      document.getElementById("start_date").value = volunteer.start_date;
+      document.getElementById("end_date").value = volunteer.end_date;
       volunteerModal.style.display = "block";
     });
 
@@ -337,6 +365,120 @@ document.addEventListener("DOMContentLoaded", () => {
     window.location.href = "board.html";
   });
 
-  // 초기 데이터 로드
-  loadVolunteers();
+  // 봉사활동 목록 불러오기
+  async function loadVolunteerList() {
+    try {
+      const response = await fetch("http://localhost:5000/api/volunteers");
+      const data = await response.json();
+
+      if (data.success) {
+        const volunteerList = document.getElementById("volunteerList");
+        volunteerList.innerHTML = ""; // 기존 목록 초기화
+
+        data.volunteers.forEach((volunteer) => {
+          const volunteerElement = document.createElement("div");
+          volunteerElement.className = "volunteer-item";
+
+          volunteerElement.innerHTML = `
+            <h3>${volunteer.title}</h3>
+            ${
+              volunteer.image_path
+                ? `<div class="volunteer-image"><img src="${volunteer.image_path}" alt="봉사 사진"></div>`
+                : ""
+            }
+            <div class="volunteer-info">
+              <div class="info-group">
+                <label>봉사 장소</label>
+                <div>${volunteer.location} ${
+            volunteer.locationDetail || ""
+          }</div>
+              </div>
+              <div class="info-group">
+                <label>봉사 시간</label>
+                <div>${volunteer.hours}시간</div>
+              </div>
+              <div class="info-group">
+                <label>활동 요일</label>
+                <div>${volunteer.days}</div>
+              </div>
+              <div class="info-group">
+                <label>봉사 대상</label>
+                <div>${volunteer.target}</div>
+              </div>
+            </div>
+            <div class="details">
+              <label>상세 내용</label>
+              <div>${volunteer.details}</div>
+            </div>
+            <div class="volunteer-actions">
+              <button class="edit-btn" data-id="${volunteer.id}">수정</button>
+              <button class="delete-btn" data-id="${volunteer.id}">삭제</button>
+            </div>
+          `;
+
+          // 수정 버튼 이벤트 리스너
+          const editBtn = volunteerElement.querySelector(".edit-btn");
+          editBtn.addEventListener("click", () => {
+            // 수정 폼에 데이터 채우기
+            document.getElementById("title").value = volunteer.title;
+            document.getElementById("hours").value = volunteer.hours;
+            document.getElementById("days").value = volunteer.days;
+            document.getElementById("target").value = volunteer.target;
+            document.getElementById("location").value = volunteer.location;
+            document.getElementById("locationDetail").value =
+              volunteer.locationDetail || "";
+            document.getElementById("details").value = volunteer.details;
+
+            // 이미지 미리보기 업데이트
+            if (volunteer.image_path) {
+              imagePreview.src = volunteer.image_path;
+              imagePreview.style.display = "block";
+            }
+
+            // 모달 표시
+            volunteerModal.style.display = "block";
+          });
+
+          // 삭제 버튼 이벤트 리스너
+          const deleteBtn = volunteerElement.querySelector(".delete-btn");
+          deleteBtn.addEventListener("click", async () => {
+            if (confirm("정말 이 봉사활동을 삭제하시겠습니까?")) {
+              try {
+                const response = await fetch(
+                  `http://localhost:5000/api/volunteers/${volunteer.id}`,
+                  {
+                    method: "DELETE",
+                  }
+                );
+
+                const data = await response.json();
+                if (data.success) {
+                  showMessage("봉사활동이 삭제되었습니다.");
+                  loadVolunteerList(); // 목록 새로고침
+                } else {
+                  showMessage(data.message || "삭제에 실패했습니다.", true);
+                }
+              } catch (error) {
+                console.error("Error:", error);
+                showMessage("삭제 중 오류가 발생했습니다.", true);
+              }
+            }
+          });
+
+          volunteerList.appendChild(volunteerElement);
+        });
+      } else {
+        showMessage(
+          data.message || "봉사활동 목록을 불러오는데 실패했습니다.",
+          true
+        );
+      }
+    } catch (error) {
+      console.error("Error:", error);
+      showMessage("봉사활동 목록을 불러오는 중 오류가 발생했습니다.", true);
+    }
+  }
+
+  // 페이지 로드 시 봉사활동 목록 불러오기
+  loadVolunteerList();
 });

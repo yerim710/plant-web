@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>관리자 인증</title>
+    <link rel="stylesheet" href="/static/css/main.css" />
+    <link rel="stylesheet" href="/static/css/style.css" />
+  </head>
+  <body>
+    <div class="main-container">
+      <div class="user-info-container">
+        <div class="user-info">
+          <span id="userName"></span>
+          <span id="userEmail"></span>
+          <span id="adminStatus"></span>
+          <button id="logoutBtn" class="logout-btn">로그아웃</button>
+        </div>
+      </div>
+
+      <div class="sidebar">
+        <h2>메뉴</h2>
+        <ul>
+          <li><a href="/main">홈</a></li>
+          <li><a href="#" id="registerVolunteerBtn">봉사 등록</a></li>
+          <li><a href="#" id="manageVolunteerBtn">봉사 관리</a></li>
+          <li><a href="/profile">프로필</a></li>
+        </ul>
+      </div>
+
+      <div class="main-content">
+        <div class="admin-verification-container">
+          <h2>관리자 인증 신청</h2>
+          <div class="current-user-info">
+            <h3>현재 사용자 정보</h3>
+            <p>이름: <span id="currentUserName"></span></p>
+            <p>이메일: <span id="currentUserEmail"></span></p>
+          </div>
+
+          <form id="adminVerificationForm">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="organization">기관명</label>
+                <input
+                  type="text"
+                  id="organization"
+                  name="organization"
+                  required
+                />
+              </div>
+              <div class="form-group">
+                <label for="representative">대표자명</label>
+                <input
+                  type="text"
+                  id="representative"
+                  name="representative"
+                  required
+                />
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="businessNumber">사업자 등록 번호</label>
+                <input
+                  type="text"
+                  id="businessNumber"
+                  name="businessNumber"
+                  required
+                />
+              </div>
+              <div class="form-group">
+                <label for="officePhone">사무실 전화번호</label>
+                <input
+                  type="text"
+                  id="officePhone"
+                  name="officePhone"
+                  required
+                />
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="address">주소</label>
+                <input type="text" id="address" name="address" required />
+              </div>
+              <div class="form-group">
+                <label for="managerPhone">담당자 연락처</label>
+                <input
+                  type="text"
+                  id="managerPhone"
+                  name="managerPhone"
+                  required
+                />
+              </div>
+            </div>
+
+            <button type="submit" class="btn">인증 신청</button>
+          </form>
+
+          <!-- 승인 처리 현황 섹션 -->
+          <div
+            class="status-container"
+            style="
+              margin-top: 30px;
+              border-top: 1px solid #eee;
+              padding-top: 30px;
+            "
+          >
+            <h3>승인 처리 현황</h3>
+            {% if verification %}
+            <div style="margin-bottom: 15px; text-align: left">
+              <span style="margin-right: 10px">
+                <strong>상태:</strong>
+                <span
+                  class="status-value {% if verification.status == 'pending' %}status-pending {% elif verification.status == 'approved' %}status-approved {% elif verification.status == 'rejected' %}status-rejected {% endif %}"
+                >
+                  {% if verification.status %} {{ verification.status |
+                  replace('pending', '승인 대기') | replace('approved', '승인
+                  완료') | replace('rejected', '반려') }} {% else %} - {% endif
+                  %}
+                </span>
+              </span>
+              <span style="margin-right: 10px">|</span>
+              <span style="margin-right: 10px">
+                <strong>기관명:</strong>
+                <span class="status-value">
+                  {{ verification.organization if verification.organization else
+                  '-' }}
+                </span>
+              </span>
+              <span style="margin-right: 10px">|</span>
+              <span style="margin-right: 10px">
+                <strong>신청일:</strong>
+                <span class="status-value">
+                  {% if verification.created_at %} {{
+                  verification.created_at[:10] }} {% else %} - {% endif %}
+                </span>
+              </span>
+              {# 신청 취소 버튼 (상태가 pending일 때만 표시) #} {% if
+              verification.status == 'pending' %}
+              <span style="margin-right: 10px">|</span>
+              <span>
+                <button
+                  id="cancelButton"
+                  class="cancel-button"
+                  style="
+                    background-color: #f44336;
+                    color: white;
+                    padding: 5px 10px; /* 버튼 크기 약간 조정 */
+                    border: none;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-size: 12px; /* 폰트 크기 약간 조정 */
+                    transition: background-color 0.3s ease;
+                    vertical-align: middle; /* 다른 텍스트와 수직 정렬 */
+                  "
+                >
+                  신청 취소
+                </button>
+              </span>
+              {% endif %}
+            </div>
+
+            {# 버튼 아래 추가 메시지 (별도 줄) #} {% if verification.status ==
+            'approved' %}
+            <p style="color: green; margin-top: 10px; text-align: left">
+              관리자 인증이 완료되었습니다.
+            </p>
+            {% elif verification.status == 'rejected' %}
+            <p style="color: red; margin-top: 10px; text-align: left">
+              관리자 인증이 반려되었습니다. 다시 신청해주세요.
+            </p>
+            {% endif %} {% else %}
+            <p
+              class="no-verification"
+              style="color: #777; font-style: italic; text-align: left"
+            >
+              아직 관리자 인증 신청 내역이 없습니다.
+            </p>
+            {% endif %}
+          </div>
+          <!-- 현황 섹션 끝 -->
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const API_BASE_URL = "http://35.232.136.23:5000"; // 클라우드 서버 주소
+
+      // 현재 사용자 정보 로드
+      async function loadUserInfo() {
+        try {
+          const response = await fetch(`${API_BASE_URL}/api/current-user`); // 수정
+          const data = await response.json();
+
+          if (data.success) {
+            document.getElementById("userName").textContent = data.name;
+            document.getElementById("userEmail").textContent = data.email;
+            document.getElementById("adminStatus").textContent = data.is_admin
+              ? "관리자 인증 완료"
+              : "관리자 인증 필요";
+
+            // 현재 사용자 정보 표시 (폼 영역에도)
+            const currentUserNameEl =
+              document.getElementById("currentUserName");
+            const currentUserEmailEl =
+              document.getElementById("currentUserEmail");
+            if (currentUserNameEl) currentUserNameEl.textContent = data.name;
+            if (currentUserEmailEl) currentUserEmailEl.textContent = data.email;
+          } else {
+            window.location.href = "/login"; // 로그인 페이지는 로컬 유지
+          }
+        } catch (error) {
+          console.error("사용자 정보 로드 실패:", error);
+          // 로그인 페이지로 리디렉션 또는 오류 메시지 표시
+          // window.location.href = "/login";
+        }
+      }
+
+      // 로그아웃 처리
+      document
+        .getElementById("logoutBtn")
+        .addEventListener("click", async () => {
+          try {
+            const response = await fetch(`${API_BASE_URL}/api/logout`, {
+              method: "POST",
+            }); // 수정
+            if (response.ok) {
+              window.location.href = "/login"; // 로그인 페이지는 로컬 유지
+            } else {
+              alert("로그아웃 실패"); // 실패 시 알림
+            }
+          } catch (error) {
+            console.error("로그아웃 실패:", error);
+            alert("로그아웃 중 오류 발생");
+          }
+        });
+
+      // 관리자 인증 폼 제출 처리
+      const adminVerificationForm = document.getElementById(
+        "adminVerificationForm"
+      );
+      if (adminVerificationForm) {
+        adminVerificationForm.addEventListener("submit", async (e) => {
+          e.preventDefault();
+
+          const formData = {
+            organization: document.getElementById("organization").value,
+            representative: document.getElementById("representative").value,
+            businessNumber: document.getElementById("businessNumber").value,
+            officePhone: document.getElementById("officePhone").value,
+            address: document.getElementById("address").value,
+            managerPhone: document.getElementById("managerPhone").value,
+          };
+
+          try {
+            const response = await fetch(
+              `${API_BASE_URL}/api/admin-verification`,
+              {
+                // 수정
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify(formData),
+              }
+            );
+
+            const data = await response.json();
+            if (data.success) {
+              alert("관리자 인증이 신청되었습니다.");
+              window.location.reload(); // 페이지 새로고침으로 현황 업데이트
+            } else {
+              alert(data.message || "관리자 인증 신청에 실패했습니다.");
+            }
+          } catch (error) {
+            console.error("관리자 인증 신청 중 오류:", error);
+            alert("관리자 인증 신청 중 오류가 발생했습니다.");
+          }
+        });
+      }
+
+      // 신청 취소 처리
+      const cancelButton = document.getElementById("cancelButton");
+      if (cancelButton) {
+        cancelButton.addEventListener("click", async () => {
+          if (confirm("정말로 관리자 인증 신청을 취소하시겠습니까?")) {
+            try {
+              const response = await fetch(
+                `${API_BASE_URL}/api/admin-verification-cancel`,
+                {
+                  // 수정
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                }
+              );
+              const data = await response.json();
+              if (data.success) {
+                alert("신청이 성공적으로 취소되었습니다.");
+                window.location.reload(); // 페이지 새로고침
+              } else {
+                alert(data.message || "신청 취소에 실패했습니다.");
+              }
+            } catch (error) {
+              console.error("신청 취소 중 오류:", error);
+              alert("신청 취소 중 오류가 발생했습니다.");
+            }
+          }
+        });
+      }
+
+      // 페이지 로드 시 사용자 정보 로드 및 폼/현황 표시 로직
+      document.addEventListener("DOMContentLoaded", () => {
+        loadUserInfo();
+        // 신청 상태에 따라 폼 숨김 로직 (만약 필요하다면 추가)
+        // 예: 승인 대기 중일 때는 폼을 숨김
+        const verificationStatus = document.querySelector(".status-pending"); // 승인 대기 상태 확인
+        const verificationFormContainer = document.getElementById(
+          "adminVerificationForm"
+        );
+        const statusContainer = document.querySelector(".status-container");
+
+        // 서버에서 전달된 verification 데이터의 status를 직접 확인하는 것이 더 정확합니다.
+        // 아래는 클라이언트 측에서 status-pending 클래스 존재 여부로 판단하는 예시입니다.
+        if (verificationStatus && verificationFormContainer) {
+          // verificationFormContainer.style.display = 'none'; // 승인 대기 중일 때 폼 숨기기 (주석 처리)
+        } else if (document.querySelector(".status-approved")) {
+          // 승인 완료 시 폼 숨기기 (필요하다면)
+          if (verificationFormContainer)
+            verificationFormContainer.style.display = "none";
+        } else {
+          // 신청 내역 없거나, 반려되었거나, 취소된 경우 폼 보이기
+          if (verificationFormContainer)
+            verificationFormContainer.style.display = "block";
+        }
+      });
+    </script>
+  </body>
+</html>
