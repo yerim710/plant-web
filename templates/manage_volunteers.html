@@ -4,10 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>봉사 신청 관리</title>
-    <link
+    <!-- <link
       rel="stylesheet"
       href="{{ url_for('static', filename='css/main.css') }}"
-    />
+    /> -->
     <link
       rel="stylesheet"
       href="{{ url_for('static', filename='css/style.css') }}"
@@ -79,13 +79,13 @@
       }
     </style>
   </head>
-  <body>
+  <body class="{{ body_class or '' }}">
     <div class="main-container">
       <div class="user-info-container">
         <div class="user-info">
           <span id="userName"></span>
           <span id="userEmail"></span>
-          <span id="adminStatus"></span>
+          <!-- <span id="adminStatus"></span> -->
           <button id="logoutBtn" class="logout-btn">로그아웃</button>
         </div>
       </div>
@@ -93,12 +93,27 @@
       <div class="sidebar">
         <h2>메뉴</h2>
         <ul>
+          {# 홈 - 모든 사용자에게 표시 #}
           <li><a href="/main">홈</a></li>
+
+          {# 봉사 등록 - admin@test.com 이 아닌 승인된 관리자에게만 표시 #} {%
+          if current_user and current_user.is_admin and current_user.email !=
+          'admin@test.com' %}
           <li><a href="/register-volunteer">봉사 등록</a></li>
+          {% endif %} {# 봉사 관리 - admin@test.com 이 아닌 승인된 관리자에게만
+          표시 (현재 페이지이므로 active) #} {% if current_user and
+          current_user.is_admin and current_user.email != 'admin@test.com' %}
           <li><a href="/manage-volunteers" class="active">봉사 관리</a></li>
-          <!-- 현재 페이지 활성화 -->
+          {% endif %} {# 프로필 - 모든 사용자에게 표시 #}
           <li><a href="/profile">프로필</a></li>
+
+          {# 관리자 인증 - admin@test.com 이 아닌 사용자에게만 표시 #} {% if
+          current_user and current_user.email != 'admin@test.com' %}
           <li><a href="/admin-verification">관리자 인증</a></li>
+          {% endif %} {# 관리자 승인 - admin@test.com 사용자에게만 표시 #} {% if
+          current_user and current_user.email == 'admin@test.com' %}
+          <li><a href="/admin/approve-requests">관리자 승인</a></li>
+          {% endif %}
         </ul>
       </div>
 
@@ -119,6 +134,7 @@
             <tr>
               <th><input type="checkbox" id="selectAllCheckbox" /></th>
               <th>순번</th>
+              <th>봉사 제목</th>
               <th>회원명</th>
               <th>회원ID</th>
               <th>활동일자</th>
@@ -144,6 +160,7 @@
                 />
               </td>
               <td>{{ loop.index }}</td>
+              <td>{{ app.activity_title or '-' }}</td>
               <td>{{ app.applicant_name }}</td>
               <td>{{ app.applicant_email }}</td>
               <td>{{ app.volunteer_date }}</td>
@@ -160,7 +177,7 @@
             </tr>
             {% else %}
             <tr>
-              <td colspan="7">아직 봉사 신청 내역이 없습니다.</td>
+              <td colspan="8">아직 봉사 신청 내역이 없습니다.</td>
             </tr>
             {% endfor %}
           </tbody>
@@ -175,19 +192,23 @@
     </div>
 
     <script>
-      const API_BASE_URL = "http://35.232.136.23:5000"; // 클라우드 서버 주소
+      const API_BASE_URL = ""; // 로컬 테스트용 API 주소 설정
 
       // 현재 사용자 정보 로드
       async function loadUserInfo() {
         try {
-          const response = await fetch(`${API_BASE_URL}/api/current-user`); // 수정
+          const response = await fetch(`${API_BASE_URL}/api/current-user`);
           const data = await response.json();
           if (data.success) {
             document.getElementById("userName").textContent = data.name;
             document.getElementById("userEmail").textContent = data.email;
-            document.getElementById("adminStatus").textContent = data.is_admin
-              ? "관리자 인증 완료"
-              : "관리자 인증 필요";
+            // const adminStatusEl = document.getElementById("adminStatus"); // adminStatus 요소 참조 제거
+            /* // adminStatus 업데이트 로직 제거
+            if (adminStatusEl)
+              adminStatusEl.textContent = data.is_admin
+                ? "관리자 인증 완료"
+                : "관리자 인증 필요";
+            */
           } else {
             // 로그인되지 않은 경우 로그인 페이지로 리디렉션 등 처리
             window.location.href = "/login";
@@ -255,24 +276,53 @@
         }
 
         const actionText = status === "approved" ? "승인" : "반려";
-        if (
-          !confirm(
-            `선택된 ${selectedIds.length}개의 신청을 ${actionText} 처리하시겠습니까?`
-          )
-        ) {
-          return;
+        let rejectionReason = null; // 반려 사유 변수 초기화
+
+        // 반려 처리 시 사유 입력 받기
+        if (status === "rejected") {
+          rejectionReason = prompt(
+            `선택된 ${selectedIds.length}개의 신청을 반려합니다. 반려 사유를 입력해주세요:`
+          );
+          if (rejectionReason === null) {
+            // 사용자가 취소 버튼을 누른 경우
+            alert("반려 처리가 취소되었습니다.");
+            return;
+          }
+          if (!rejectionReason.trim()) {
+            // 사유를 입력하지 않은 경우
+            alert("반려 사유를 입력해야 합니다.");
+            return;
+          }
+          rejectionReason = rejectionReason.trim(); // 앞뒤 공백 제거
+        } else {
+          // 승인 시 확인 메시지
+          if (
+            !confirm(
+              `선택된 ${selectedIds.length}개의 신청을 ${actionText} 처리하시겠습니까?`
+            )
+          ) {
+            return;
+          }
+        }
+
+        // API 요청 데이터 구성
+        const requestData = {
+          ids: selectedIds,
+          status: status,
+        };
+        if (status === "rejected") {
+          requestData.reason = rejectionReason; // 반려 시 사유 추가
         }
 
         try {
           const response = await fetch(
             `${API_BASE_URL}/api/update-application-status`,
             {
-              // 수정
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
               },
-              body: JSON.stringify({ ids: selectedIds, status: status }),
+              body: JSON.stringify(requestData), // 수정된 데이터 전송
             }
           );
           const data = await response.json();

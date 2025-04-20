@@ -4,72 +4,346 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>봉사 등록</title>
-    <link
+    <!-- CSS 링크 -->
+    <!-- <link
       rel="stylesheet"
       href="{{ url_for('static', filename='css/main.css') }}"
-    />
+    /> -->
     <link
       rel="stylesheet"
       href="{{ url_for('static', filename='css/style.css') }}"
     />
+    <style>
+      /* 추가 스타일 필요시 여기에 정의 */
+    </style>
   </head>
   <body>
     <div class="main-container">
+      <!-- 사용자 정보 표시 영역 -->
       <div class="user-info-container">
         <div class="user-info">
           <span id="userName"></span>
           <span id="userEmail"></span>
-          <span id="adminStatus"></span>
+          <!-- <span id="adminStatus"></span> -->
           <button id="logoutBtn" class="logout-btn">로그아웃</button>
         </div>
       </div>
 
+      <!-- 사이드바 -->
       <div class="sidebar">
         <h2>메뉴</h2>
         <ul>
+          {# 홈 - 모든 사용자에게 표시 #}
           <li><a href="/main">홈</a></li>
+
+          {# 봉사 등록 - admin@test.com 이 아닌 승인된 관리자에게만 표시 (현재
+          페이지이므로 active) #} {% if current_user and current_user.is_admin
+          and current_user.email != 'admin@test.com' %}
           <li><a href="/register-volunteer" class="active">봉사 등록</a></li>
-          <!-- 활성화 -->
+          {% endif %} {# 봉사 관리 - admin@test.com 이 아닌 승인된 관리자에게만
+          표시 #} {% if current_user and current_user.is_admin and
+          current_user.email != 'admin@test.com' %}
           <li><a href="/manage-volunteers">봉사 관리</a></li>
+          {% endif %} {# 프로필 - 모든 사용자에게 표시 #}
           <li><a href="/profile">프로필</a></li>
+
+          {# 관리자 인증 - admin@test.com 이 아닌 사용자에게만 표시 #} {% if
+          current_user and current_user.email != 'admin@test.com' %}
           <li><a href="/admin-verification">관리자 인증</a></li>
+          {% endif %} {# 관리자 승인 - admin@test.com 사용자에게만 표시 #} {% if
+          current_user and current_user.email == 'admin@test.com' %}
+          <li><a href="/admin/approve-requests">관리자 승인</a></li>
+          {% endif %}
         </ul>
       </div>
 
+      <!-- 메인 콘텐츠 영역 -->
       <div class="main-content">
         <div class="form-container">
           <h2>봉사 활동 등록</h2>
-          <form id="registerVolunteerForm">
-            <div class="form-group">
-              <label for="title">제목</label>
-              <input type="text" id="title" name="title" required />
-            </div>
-            <div class="form-group">
-              <label for="description">설명</label>
-              <textarea id="description" name="description" required></textarea>
-            </div>
-            <div class="form-group">
-              <label for="location">장소</label>
-              <input type="text" id="location" name="location" required />
-            </div>
-            <div class="form-group">
-              <label for="date">활동 날짜</label>
-              <input type="date" id="date" name="date" required />
-            </div>
-            <div class="form-group">
-              <label for="time">활동 시간</label>
-              <input type="time" id="time" name="time" required />
-            </div>
-            <div class="form-group">
-              <label for="duration">예상 소요 시간</label>
+          <form
+            id="registerVolunteerForm"
+            class="two-column-grid"
+            enctype="multipart/form-data"
+          >
+            <!-- 활동 제목 (전체 너비) -->
+            <div class="form-group full-width">
+              <label for="activity_title">활동 제목</label>
               <input
                 type="text"
-                id="duration"
-                name="duration"
-                placeholder="예: 2시간"
+                id="activity_title"
+                name="activity_title"
                 required
               />
             </div>
+
+            <!-- 봉사 내용 (전체 너비) -->
+            <div class="form-group full-width">
+              <label for="volunteer_content">봉사 내용</label>
+              <textarea
+                id="volunteer_content"
+                name="volunteer_content"
+                rows="10"
+                required
+              ></textarea>
+            </div>
+
+            <!-- 활동 요일 (1열) -->
+            <div class="form-group">
+              <label>활동 요일 (중복 선택 가능)</label>
+              <div
+                class="checkbox-group"
+                style="display: flex; gap: 10px; flex-wrap: wrap"
+              >
+                <label
+                  ><input type="checkbox" name="activity_days" value="mon" />
+                  월</label
+                >
+                <label
+                  ><input type="checkbox" name="activity_days" value="tue" />
+                  화</label
+                >
+                <label
+                  ><input type="checkbox" name="activity_days" value="wed" />
+                  수</label
+                >
+                <label
+                  ><input type="checkbox" name="activity_days" value="thu" />
+                  목</label
+                >
+                <label
+                  ><input type="checkbox" name="activity_days" value="fri" />
+                  금</label
+                >
+                <label
+                  ><input type="checkbox" name="activity_days" value="sat" />
+                  토</label
+                >
+                <label
+                  ><input type="checkbox" name="activity_days" value="sun" />
+                  일</label
+                >
+              </div>
+            </div>
+
+            <!-- 활동구분 (2열) -->
+            <div class="form-group">
+              <label>활동구분</label>
+              <div>
+                <input
+                  type="radio"
+                  id="activity_type_online"
+                  name="activity_type"
+                  value="online"
+                  required
+                />
+                <label
+                  for="activity_type_online"
+                  style="display: inline; margin-right: 10px"
+                  >온라인</label
+                >
+                <input
+                  type="radio"
+                  id="activity_type_offline"
+                  name="activity_type"
+                  value="offline"
+                />
+                <label for="activity_type_offline" style="display: inline"
+                  >오프라인</label
+                >
+              </div>
+            </div>
+
+            <!-- 봉사 활동 기간 (1열) -->
+            <div class="form-group">
+              <label for="activity_period_start">봉사 활동 기간</label>
+              <div style="display: flex; gap: 10px; align-items: center">
+                <input
+                  type="date"
+                  id="activity_period_start"
+                  name="activity_period_start"
+                  required
+                />
+                <span>~</span>
+                <input
+                  type="date"
+                  id="activity_period_end"
+                  name="activity_period_end"
+                  required
+                />
+              </div>
+            </div>
+
+            <!-- 활동 시간 (2열) -->
+            <div class="form-group">
+              <label for="activity_time_start">활동 시간</label>
+              <div style="display: flex; gap: 10px; align-items: center">
+                <input
+                  type="time"
+                  id="activity_time_start"
+                  name="activity_time_start"
+                  required
+                />
+                <span>~</span>
+                <input
+                  type="time"
+                  id="activity_time_end"
+                  name="activity_time_end"
+                  required
+                />
+              </div>
+            </div>
+
+            <!-- 등록 구분 (1열) -->
+            <!-- 
+            <div class="form-group">
+              <label for="registration_org">등록구분 (기관명)</label>
+              <input
+                type="text"
+                id="registration_org"
+                name="registration_org"
+                readonly
+              />
+            </div>
+            -->
+
+            <!-- 봉사 인정 시간 (2열) -->
+            <div class="form-group">
+              <label for="credited_hours">봉사 인정 시간</label>
+              <input
+                type="text"
+                id="credited_hours"
+                name="credited_hours"
+                placeholder="예: 3시간 또는 3"
+                required
+              />
+            </div>
+
+            <!-- 첨부파일 (1열) -->
+            <div class="form-group">
+              <label for="attachment">첨부파일</label>
+              <!-- 숨겨진 실제 파일 입력 -->
+              <input
+                type="file"
+                id="attachmentInput"
+                name="attachment"
+                style="display: none"
+              />
+              <!-- 파일 선택을 위한 링크 -->
+              <a
+                href="#"
+                id="attachmentLink"
+                style="
+                  text-decoration: underline;
+                  cursor: pointer;
+                  margin-right: 10px;
+                "
+                >파일 선택</a
+              >
+              <!-- 선택된 파일 이름 표시 -->
+              <span id="selectedFileName">선택된 파일 없음</span>
+            </div>
+
+            <!-- (빈 2열) -->
+            <div class="form-group"></div>
+
+            <!-- 봉사 장소 (전체 너비) -->
+            <div class="form-group full-width">
+              <label>봉사 장소</label>
+              <div
+                class="address-search-group"
+                style="display: flex; gap: 10px; align-items: center"
+              >
+                <input
+                  type="text"
+                  id="address"
+                  name="address"
+                  placeholder="주소 검색"
+                  style="flex: 1"
+                />
+                <button
+                  type="button"
+                  class="search-btn"
+                  onclick="execDaumPostcode()"
+                  style="flex-shrink: 0"
+                >
+                  주소 검색
+                </button>
+              </div>
+              <input
+                type="text"
+                id="address_detail"
+                name="address_detail"
+                placeholder="상세 주소"
+                style="margin-top: 5px"
+              />
+              <!-- 카카오 지도 표시 영역 -->
+              <div
+                id="map"
+                style="
+                  width: 100%;
+                  height: 300px;
+                  margin-top: 10px;
+                  display: none;
+                "
+              ></div>
+              <!-- 카카오 지도 스크립트 -->
+              <script src="//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
+              <script src="//dapi.kakao.com/v2/maps/sdk.js?appkey=YOUR_APP_KEY&libraries=services"></script>
+              <!-- TODO: YOUR_APP_KEY 교체 및 execDaumPostcode 함수 구현 필요 -->
+            </div>
+
+            <!-- 봉사자 유형 (1열) -->
+            <div class="form-group">
+              <label>봉사자 유형</label>
+              <div>
+                <input
+                  type="radio"
+                  id="volunteer_type_youth"
+                  name="volunteer_type"
+                  value="youth"
+                  required
+                />
+                <label
+                  for="volunteer_type_youth"
+                  style="display: inline; margin-right: 10px"
+                  >청소년</label
+                >
+                <input
+                  type="radio"
+                  id="volunteer_type_adult"
+                  name="volunteer_type"
+                  value="adult"
+                />
+                <label
+                  for="volunteer_type_adult"
+                  style="display: inline; margin-right: 10px"
+                  >성인</label
+                >
+                <input
+                  type="radio"
+                  id="volunteer_type_corp"
+                  name="volunteer_type"
+                  value="corporate"
+                />
+                <label
+                  for="volunteer_type_corp"
+                  style="display: inline; margin-right: 10px"
+                  >기업</label
+                >
+                <input
+                  type="radio"
+                  id="volunteer_type_group"
+                  name="volunteer_type"
+                  value="group"
+                />
+                <label for="volunteer_type_group" style="display: inline"
+                  >단체</label
+                >
+              </div>
+            </div>
+
+            <!-- 모집 인원 (2열) -->
             <div class="form-group">
               <label for="max_volunteers">모집 인원</label>
               <input
@@ -80,58 +354,205 @@
                 required
               />
             </div>
-            <button type="submit" class="btn-submit">등록하기</button>
+
+            <!-- 담당자 전화번호 (1열) -->
+            <div class="form-group">
+              <label for="manager_phone">담당자 전화번호</label>
+              <input
+                type="tel"
+                id="manager_phone"
+                name="manager_phone"
+                required
+              />
+            </div>
+
+            <!-- 담당자 이메일 (2열) -->
+            <div class="form-group">
+              <label for="manager_email">담당자 이메일</label>
+              <input
+                type="email"
+                id="manager_email"
+                name="manager_email"
+                required
+              />
+            </div>
+
+            <!-- 담당자명 (1열) -->
+            <div class="form-group">
+              <label for="manager_name">담당자명</label>
+              <input
+                type="text"
+                id="manager_name"
+                name="manager_name"
+                required
+              />
+            </div>
+
+            <!-- 관리자 메모 필드 제거 -->
+            <!--
+            <div class="form-group">
+              <label for="admin_memo">관리자 메모 (선택)</label>
+              <textarea id="admin_memo" name="admin_memo" rows="3"></textarea>
+            </div>
+            -->
+
+            <!-- 등록하기 버튼 (전체 너비) -->
+            <button type="submit" class="btn btn-submit full-width">
+              등록하기
+            </button>
           </form>
         </div>
       </div>
     </div>
 
     <script>
-      // 사용자 정보 로드, 로그아웃 등 필요한 스크립트 추가
+      const API_BASE_URL = ""; // 로컬 테스트용 API 주소 설정
+
+      // 사용자 정보 로드 함수
       async function loadUserInfo() {
-        /* ... */
-      }
-      document
-        .getElementById("logoutBtn")
-        .addEventListener("click", async () => {
-          /* ... */
-        });
-      document.addEventListener("DOMContentLoaded", loadUserInfo);
-
-      // 폼 제출 처리 (나중에 API 엔드포인트 만들고 연결해야 함)
-      const registerForm = document.getElementById("registerVolunteerForm");
-      if (registerForm) {
-        registerForm.addEventListener("submit", async (e) => {
-          e.preventDefault();
-          // 폼 데이터 가져오기
-          const formData = new FormData(registerForm);
-          const data = Object.fromEntries(formData.entries());
-
-          // API 호출 (예시 - 실제 API 엔드포인트 필요)
-          alert("봉사 등록 기능은 아직 구현되지 않았습니다.");
-          console.log("등록할 봉사 정보:", data);
-          try {
-            const response = await fetch(
-              `${API_BASE_URL}/api/register-volunteer`,
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(data),
-              }
-            );
-            const result = await response.json();
-            if (result.success) {
-              alert("봉사 활동이 성공적으로 등록되었습니다.");
-              window.location.href = "/main"; // 또는 다른 페이지로 이동
-            } else {
-              alert(result.message || "봉사 등록에 실패했습니다.");
-            }
-          } catch (error) {
-            console.error("봉사 등록 중 오류:", error);
-            alert("봉사 등록 중 오류가 발생했습니다.");
+        try {
+          const response = await fetch(`${API_BASE_URL}/api/current-user`);
+          const data = await response.json();
+          if (data.success) {
+            const userNameEl = document.getElementById("userName");
+            const userEmailEl = document.getElementById("userEmail");
+            // const adminStatusEl = document.getElementById("adminStatus"); // adminStatus 요소 참조 제거
+            if (userNameEl) userNameEl.textContent = data.name;
+            if (userEmailEl) userEmailEl.textContent = data.email;
+            /* // adminStatus 업데이트 로직 제거
+            if (adminStatusEl)
+              adminStatusEl.textContent = data.is_admin
+                ? "관리자 인증 완료"
+                : "관리자 인증 필요";
+            */
+          } else {
+            window.location.href = "/login";
           }
-        });
+        } catch (error) {
+          console.error("사용자 정보 로드 실패:", error);
+          window.location.href = "/login";
+        }
       }
+
+      // 로그아웃 처리 함수
+      function setupLogout() {
+        const logoutBtn = document.getElementById("logoutBtn");
+        if (logoutBtn) {
+          logoutBtn.addEventListener("click", async () => {
+            try {
+              const response = await fetch(`${API_BASE_URL}/api/logout`, {
+                method: "POST",
+              });
+              if (response.ok) {
+                window.location.href = "/login";
+              } else {
+                alert("로그아웃 실패");
+              }
+            } catch (error) {
+              console.error("로그아웃 실패:", error);
+              alert("로그아웃 중 오류 발생");
+            }
+          });
+        }
+      }
+
+      // 등록구분 자동 채우기 함수 제거
+      /* 
+      function fillRegistrationOrg() {
+        const orgName = currentUser ? currentUser.organization_name : '' ; 
+        const orgInput = document.getElementById('registration_org');
+        if (orgInput) {
+          orgInput.value = orgName || '기관 정보 없음'; 
+        }
+      }
+      */
+
+      // 카카오 주소 검색 API 함수
+      function execDaumPostcode() {
+        new daum.Postcode({
+          oncomplete: function (data) {
+            // 주소 처리 로직 (입력 필드 채우기, 지도 표시 등)
+            console.log(data);
+            document.getElementById("address").value = data.address;
+            document.getElementById("map").style.display = "block";
+            // TODO: 지도 표시 및 좌표 저장 로직 추가
+          },
+        }).open();
+      }
+
+      // 폼 제출 처리 수정
+      function setupFormSubmit() {
+        const registerForm = document.getElementById("registerVolunteerForm");
+        if (registerForm) {
+          registerForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const formData = new FormData(registerForm);
+            // FormData는 파일과 다른 필드를 함께 보낼 때 유용합니다.
+            // 체크박스 값 처리 (activity_days)
+            const days = [];
+            registerForm
+              .querySelectorAll('input[name="activity_days"]:checked')
+              .forEach((checkbox) => {
+                days.push(checkbox.value);
+              });
+            // FormData에 days 배열 추가 (직렬화된 형태 또는 별도 처리 필요할 수 있음)
+            formData.append("activity_days_list", JSON.stringify(days));
+
+            // 서버로 FormData 전송 (헤더에서 Content-Type 제거해야 브라우저가 자동 설정)
+            try {
+              const response = await fetch(
+                `${API_BASE_URL}/api/register-volunteer`,
+                {
+                  method: "POST",
+                  // headers: { "Content-Type": "application/json" }, // FormData 사용 시 제거
+                  body: formData,
+                }
+              );
+              const result = await response.json();
+              if (result.success) {
+                alert("봉사 활동이 성공적으로 등록되었습니다.");
+                window.location.href = "/main";
+              } else {
+                alert(result.message || "봉사 등록에 실패했습니다.");
+              }
+            } catch (error) {
+              console.error("봉사 등록 중 오류:", error);
+              alert("봉사 등록 중 오류가 발생했습니다.");
+            }
+          });
+        }
+      }
+
+      // 첨부파일 링크 클릭 및 파일 선택 처리
+      function setupAttachmentLink() {
+        const attachmentLink = document.getElementById("attachmentLink");
+        const attachmentInput = document.getElementById("attachmentInput");
+        const selectedFileNameSpan =
+          document.getElementById("selectedFileName");
+
+        if (attachmentLink && attachmentInput && selectedFileNameSpan) {
+          attachmentLink.addEventListener("click", (e) => {
+            e.preventDefault(); // 링크 기본 동작 방지
+            attachmentInput.click(); // 숨겨진 input 클릭 트리거
+          });
+
+          attachmentInput.addEventListener("change", () => {
+            if (attachmentInput.files.length > 0) {
+              selectedFileNameSpan.textContent = attachmentInput.files[0].name;
+            } else {
+              selectedFileNameSpan.textContent = "선택된 파일 없음";
+            }
+          });
+        }
+      }
+
+      // 페이지 로드 시 실행
+      document.addEventListener("DOMContentLoaded", () => {
+        loadUserInfo(); // fillRegistrationOrg 호출 제거
+        setupLogout();
+        setupFormSubmit();
+        setupAttachmentLink();
+      });
     </script>
   </body>
 </html>

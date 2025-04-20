@@ -4,17 +4,23 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>프로필</title>
-    <link rel="stylesheet" href="static/css/main.css" />
-    <link rel="stylesheet" href="static/css/style.css" />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/main.css') }}"
+    />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/style.css') }}"
+    />
   </head>
-  <body>
+  <body class="profile-page">
     <div class="main-container">
       <!-- 사용자 정보 표시 영역 -->
       <div class="user-info-container">
         <div class="user-info">
           <span id="userName"></span>
           <span id="userEmail"></span>
-          <span id="adminStatus"></span>
+          <!-- <span id="adminStatus"></span> -->
           <button id="logoutBtn" class="logout-btn">로그아웃</button>
         </div>
       </div>
@@ -22,16 +28,46 @@
       <div class="sidebar">
         <h2>메뉴</h2>
         <ul>
+          {# 홈 - 모든 사용자에게 표시 #}
           <li><a href="/main">홈</a></li>
-          <li><a href="#" id="registerVolunteerBtn">봉사 등록</a></li>
-          <li><a href="#" id="manageVolunteerBtn">봉사 관리</a></li>
+
+          {# 봉사 등록 - admin@test.com 이 아닌 승인된 관리자에게만 표시 #} {%
+          if current_user and current_user.is_admin and current_user.email !=
+          'admin@test.com' %}
+          <li><a href="/register-volunteer">봉사 등록</a></li>
+          {% endif %} {# 봉사 관리 - admin@test.com 이 아닌 승인된 관리자에게만
+          표시 #} {% if current_user and current_user.is_admin and
+          current_user.email != 'admin@test.com' %}
+          <li><a href="/manage-volunteers">봉사 관리</a></li>
+          {% endif %} {# 프로필 - 모든 사용자에게 표시 (현재 페이지이므로
+          active) #}
           <li><a href="/profile" class="active">프로필</a></li>
+
+          {# 관리자 인증 - admin@test.com 이 아닌 사용자에게만 표시 #} {% if
+          current_user and current_user.email != 'admin@test.com' %}
+          <li><a href="/admin-verification">관리자 인증</a></li>
+          {% endif %} {# 관리자 승인 - admin@test.com 사용자에게만 표시 #} {% if
+          current_user and current_user.email == 'admin@test.com' %}
+          <li><a href="/admin/approve-requests">관리자 승인</a></li>
+          {% endif %}
         </ul>
       </div>
 
       <div class="main-content">
         <div class="profile-container">
           <h2>프로필 설정</h2>
+
+          <!-- 이름 변경 섹션 추가 -->
+          <div class="profile-section">
+            <h3>이름 변경</h3>
+            <form id="changeNameForm">
+              <div class="form-group">
+                <label for="newName">새 이름</label>
+                <input type="text" id="newName" required />
+              </div>
+              <button type="submit" class="btn">이름 변경</button>
+            </form>
+          </div>
 
           <div class="profile-section">
             <h3>이메일 변경</h3>
@@ -84,14 +120,19 @@
           if (data.success) {
             document.getElementById("userName").textContent = data.name;
             document.getElementById("userEmail").textContent = data.email;
-            document.getElementById("adminStatus").textContent = data.is_admin
-              ? "관리자 인증 완료"
-              : "관리자 인증 필요";
+            // const adminStatusEl = document.getElementById("adminStatus");
+            /*
+            if (adminStatusEl)
+              adminStatusEl.textContent = data.is_admin
+                ? "관리자 인증 완료"
+                : "관리자 인증 필요";
+            */
           } else {
             window.location.href = "/login";
           }
         } catch (error) {
           console.error("사용자 정보 로드 실패:", error);
+          // window.location.href = "/login";
         }
       }
 
@@ -106,6 +147,41 @@
             }
           } catch (error) {
             console.error("로그아웃 실패:", error);
+          }
+        });
+
+      // 이름 변경 처리 (새로 추가)
+      document
+        .getElementById("changeNameForm")
+        .addEventListener("submit", async function (e) {
+          e.preventDefault();
+          const newName = document.getElementById("newName").value;
+
+          if (!newName.trim()) {
+            // 빈 이름 입력 방지
+            alert("새 이름을 입력해주세요.");
+            return;
+          }
+
+          try {
+            const response = await fetch("/api/change-name", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ newName }),
+            });
+
+            const data = await response.json();
+            if (data.success) {
+              alert("이름이 성공적으로 변경되었습니다.");
+              document.getElementById("userName").textContent = newName; // 화면에 표시된 이름 업데이트
+            } else {
+              alert(data.message || "이름 변경에 실패했습니다.");
+            }
+          } catch (error) {
+            console.error("이름 변경 중 오류:", error);
+            alert("이름 변경 중 오류가 발생했습니다.");
           }
         });
 

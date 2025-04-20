@@ -1,3 +1,6 @@
+// API_BASE_URL 정의 (다른 JS 파일과 일관성을 위해 추가)
+const API_BASE_URL = ""; // 로컬 테스트 시 비워둠
+
 document.addEventListener("DOMContentLoaded", () => {
   const signupForm = document.getElementById("signupForm");
   const nameInput = document.getElementById("name");
@@ -57,16 +60,13 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     try {
-      const response = await fetch(
-        "http://localhost:5000/api/send-verification",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ email }),
-        }
-      );
+      const response = await fetch(`${API_BASE_URL}/api/send-verification`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email }),
+      });
 
       const data = await response.json();
 
@@ -112,7 +112,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     try {
-      const response = await fetch("http://localhost:5000/api/verify-code", {
+      const response = await fetch(`${API_BASE_URL}/api/verify-code`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -173,7 +173,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     try {
       // Flask 서버로 회원가입 데이터 전송
-      const response = await fetch("http://localhost:5000/api/signup", {
+      const response = await fetch(`${API_BASE_URL}/api/signup`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -189,8 +189,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (data.success) {
         alert(data.message);
-        // 회원가입 성공 시 로그인 페이지로 이동
-        window.location.href = "login.html";
+        // 회원가입 성공 시 로그인 페이지(/login)로 이동
+        window.location.href = "/login";
       } else {
         alert(data.message);
       }

@@ -193,3 +193,105 @@ h2 {
   margin-top: 10px;
   text-align: center;
 }
+
+/* --- 회원가입 이메일 인증 스타일 추가 --- */
+
+/* 이메일 + 인증버튼 그룹 (signup.html의 .email-input-group) */
+.email-input-group {
+  display: flex;
+  gap: 10px;
+  align-items: center; /* 버튼과 input 높이 맞춤 */
+}
+
+.email-input-group input {
+  flex: 1; /* input이 남는 공간 차지 */
+}
+
+.email-input-group button {
+  background-color: #2196f3;
+  color: white;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.3s;
+  font-size: 14px;
+  height: 36px; /* 입력칸과 높이 맞추기 */
+  line-height: 1; /* 버튼 내 텍스트 정렬 */
+}
+
+.email-input-group button:hover {
+  background-color: #1976d2;
+}
+
+.email-input-group button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+/* 인증 코드 입력 섹션 전체 (signup.html의 #verification div) */
+#verification {
+  margin-top: 15px; /* 이메일 입력 그룹과의 간격 */
+  margin-bottom: 20px;
+  padding: 0; /* 내부 패딩 제거 */
+  border: none; /* 테두리 제거 */
+  background: none; /* 배경색 제거 */
+}
+
+/* 인증 코드 입력칸 그룹 + 확인 버튼 그룹 (signup.html의 .verification-input-group) */
+.verification-input-group {
+  display: flex;
+  gap: 10px;
+  align-items: center; /* 버튼과 입력칸 그룹 정렬 */
+}
+
+/* 인증 코드 6칸 그룹 (signup.html의 .verification-code-inputs) */
+.verification-code-inputs {
+  display: flex; /* 입력칸들을 가로로 배열 */
+  gap: 5px;
+  flex-grow: 1; /* 남는 공간 차지 */
+}
+
+/* 인증 코드 각 입력칸 (signup.html의 .verification-code-input) */
+.verification-code-input {
+  width: 100%; /* flex item 너비 자동 조절 */
+  max-width: 36px; /* 최대 너비 제한 */
+  height: 36px;
+  text-align: center;
+  font-size: 16px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 0;
+  flex: 1 1 0; /* flex 아이템 너비 균등 분배 */
+}
+
+.verification-code-input:focus {
+  outline: none;
+  border-color: #2196f3;
+  box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.25);
+}
+
+/* 확인 버튼 (signup.html의 #confirmVerificationBtn) */
+#confirmVerificationBtn {
+  background-color: #2196f3;
+  color: white;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.3s;
+  font-size: 14px;
+  height: 36px; /* 입력칸과 높이 맞추기 */
+  line-height: 1;
+}
+
+#confirmVerificationBtn:hover {
+  background-color: #1976d2;
+}
+
+#confirmVerificationBtn:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
