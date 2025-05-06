@@ -250,12 +250,7 @@ form.two-column-grid button.full-width {
 
 /* 메인 레이아웃 스타일 */
 .main-container {
-  display: flex; /* Flexbox 레이아웃 사용 */
-  /* height: 100vh; */ /* 전체 뷰포트 높이 제거 (스크롤 가능하도록) */
-  max-width: none; /* 최대 너비 제한 제거 */
-  margin: 0; /* 마진 제거 */
-  padding: 0; /* 패딩 제거 */
-  min-height: 100vh; /* 최소 높이를 뷰포트로 설정 */
+  display: flex;
 }
 
 .user-info-container {
@@ -285,32 +280,30 @@ form.two-column-grid button.full-width {
 }
 
 .logout-btn {
-  padding: 5px 10px; /* 버튼 크기 조절 */
-  background: #e74c3c;
-  color: white;
-  border: none;
+  padding: 5px 10px;
+  background: #cccccc; /* 연한 회색으로 변경 */
+  color: #333; /* 글자색은 어둡게 조정 */
+  border: 1px solid #b0b0b0; /* 연한 테두리 추가 (선택 사항) */
   border-radius: 5px;
   cursor: pointer;
   transition: all 0.3s ease;
-  font-size: 13px; /* 버튼 폰트 크기 조절 */
+  font-size: 13px;
 }
 
 .logout-btn:hover {
-  background: #c0392b;
+  background: #b0b0b0; /* 호버 시 조금 더 진한 회색 */
+  border-color: #999999;
 }
 
 .sidebar {
-  width: 250px; /* 사이드바 너비 고정 */
-  background-color: #343a40; /* 사이드바 배경색 */
-  color: white;
+  width: 200px; /* 사이드바 너비 */
+  background-color: #f8f9fa; /* 사이드바 배경색 */
   padding: 20px;
-  padding-top: 80px; /* user-info-container 높이만큼 패딩 추가 */
-  position: fixed; /* 화면 왼쪽에 고정 */
+  height: 100vh; /* 화면 전체 높이 */
+  box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1); /* 오른쪽에 그림자 */
+  position: fixed; /* 스크롤 시 고정 */
   left: 0;
-  top: 0; /* user-info-container 아래부터 시작하도록 조정 */
-  bottom: 0;
-  overflow-y: auto; /* 내용 많을 경우 스크롤 */
-  z-index: 900; /* user-info-container 보다는 아래 */
+  top: 60px; /* 상단 사용자 정보 영역 아래 */
 }
 
 .sidebar h2 {
@@ -346,11 +339,11 @@ form.two-column-grid button.full-width {
 }
 
 .main-content {
-  flex-grow: 1;
-  /* padding: 60px 20px; */ /* 이전 값 주석 처리 */
-  padding: 100px 100px; /* 상하 100px, 좌우 100px 패딩으로 변경 */
-  margin-left: 250px; /* 사이드바 너비 고려 */
-  /* padding-top: 80px; */ /* 이전 값 주석 처리 */
+  margin-left: 220px; /* 사이드바 너비 + 약간의 여백 */
+  padding: 100px 200px; /* 상하 100px, 좌우 200px 패딩 */
+  flex-grow: 1; /* 남은 공간 채우기 */
+  margin-top: 60px; /* 상단 사용자 정보 영역 아래 */
+  width: calc(100% - 220px); /* 전체 너비에서 사이드바 너비 제외 */
   background-color: #fff;
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
   border-radius: 5px;
@@ -798,12 +791,12 @@ form.two-column-grid input[type="radio"] {
 }
 
 .volunteer-card .edit-button {
-  background-color: #ffc107; /* 노란색 계열 */
-  color: #333;
+  background-color: #006400; /* 딥 그린으로 변경 */
+  color: white; /* 글자색 흰색으로 변경 */
 }
 
 .volunteer-card .edit-button:hover {
-  background-color: #e0a800;
+  background-color: #004d00; /* 호버 시 더 어두운 녹색 */
 }
 
 .volunteer-card .delete-button {
@@ -826,3 +819,170 @@ form.two-column-grid input[type="radio"] {
 .manage-volunteers-page .main-content {
   padding-top: 120px; /* 상단 패딩을 늘려서 제목이 잘리지 않도록 조정 (기존 100px에서 증가) */
 }
+
+/* --- 접근 권한 없음 메시지 스타일 --- */
+.permission-denied-message {
+  /* padding: 40px; */ /* 내부 여백 제거 */
+  text-align: center; /* 텍스트/버튼 가운데 정렬 유지 */
+  /* background-color: #f8f9fa; */ /* 배경색 제거 */
+  /* border: 1px solid #e9ecef; */ /* 테두리 제거 */
+  /* border-radius: 8px; */ /* 모서리 둥글게 제거 */
+  /* max-width: 600px; */ /* 최대 너비 제한 제거 */
+  margin: 50px auto; /* 상하 여백 유지, 가로 중앙 정렬 제거 (필요 시 조정) */
+}
+
+.permission-denied-message h2 {
+  margin-bottom: 15px;
+  color: black; /* 제목 색상 검정 유지 */
+  font-size: 2em; /* 제목 글씨 크기 유지 */
+}
+
+.permission-denied-message p {
+  margin-bottom: 10px;
+  color: #6c757d; /* 본문 텍스트 색상 유지 */
+  /* white-space: nowrap; */ /* 줄 바꿈 방지 제거 */
+  /* overflow: hidden; */ /* 내용 넘칠 경우 숨김 제거 */
+  /* text-overflow: ellipsis; */ /* 내용 넘칠 경우 ... 표시 제거 */
+}
+
+/* 안내 메시지 내 버튼 스타일 */
+.permission-denied-message .btn {
+  margin-top: 30px;
+  width: auto; /* 버튼 너비 자동 */
+  padding: 10px 20px; /* 버튼 패딩 유지 */
+}
+
+/* --- 관리자 콘텐츠 박스 스타일 (manage_volunteers.html) --- */
+.admin-content-box {
+  background-color: #fff; /* 흰색 배경 */
+  padding: 30px; /* 내부 여백 */
+  border-radius: 8px; /* 모서리 둥글게 */
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05); /* 부드러운 그림자 */
+  border: 1px solid #e9ecef; /* 연한 테두리 */
+  margin-top: 20px; /* 제목과의 간격 */
+}
+
+.admin-content-box h2 {
+  /* 필요 시 박스 내부 제목 스타일 조정 */
+  margin-bottom: 25px; /* 테이블/버튼과의 간격 조정 */
+  text-align: center; /* 제목 가운데 정렬 (선택 사항) */
+}
+
+/* 봉사 신청 관리 테이블 스타일 개선 (manage_volunteers.html) */
+.admin-content-box .application-table {
+  width: 100%;
+  border-collapse: collapse; /* 테두리 합치기 */
+  margin-top: 25px; /* 제목과의 간격 */
+  font-size: 0.95em; /* 테이블 전체 폰트 크기 약간 조정 */
+  border: none; /* 외부 테이블 테두리 제거 */
+  border-bottom: 2px solid #dee2e6; /* 테이블 하단에만 구분선 */
+}
+
+.admin-content-box .application-table th,
+.admin-content-box .application-table td {
+  border: none; /* 셀 테두리 제거 */
+  border-bottom: 1px solid #e9ecef; /* 행 구분선 (하단) */
+  padding: 12px 15px; /* 셀 내부 여백 증가 */
+  text-align: center; /* 기본 가운데 정렬 */
+  vertical-align: middle; /* 세로 중앙 정렬 */
+}
+
+/* 특정 컬럼 왼쪽 정렬 */
+.admin-content-box .application-table th:nth-child(3), /* 봉사 제목 */
+.admin-content-box .application-table td:nth-child(3),
+.admin-content-box .application-table th:nth-child(4), /* 회원명 */
+.admin-content-box .application-table td:nth-child(4),
+.admin-content-box .application-table th:nth-child(5), /* 회원ID */
+.admin-content-box .application-table td:nth-child(5) {
+  text-align: left;
+}
+
+.admin-content-box .application-table th {
+  background-color: #f8f9fa; /* 헤더 배경색 약간 밝게 */
+  color: #495057; /* 헤더 글자색 */
+  font-weight: 600; /* 헤더 글자 두께 */
+  border-bottom-width: 2px; /* 헤더 하단 구분선 두껍게 */
+}
+
+/* 체크박스 열 너비 고정 (선택 사항) */
+.admin-content-box .application-table th:first-child,
+.admin-content-box .application-table td:first-child {
+  width: 50px; /* 너비 조정 */
+}
+
+/* 상태별 스타일은 유지 */
+.status-pending {
+  color: #ff9800;
+  font-weight: bold;
+}
+.status-approved {
+  color: #4caf50;
+  font-weight: bold;
+}
+.status-rejected {
+  color: #f44336;
+  font-weight: bold;
+}
+
+/* 봉사 신청 관리 액션 버튼 스타일 개선 (manage_volunteers.html) */
+.admin-content-box .action-buttons {
+  margin-top: 0; /* 테이블과의 간격은 테이블 margin-top으로 조정 */
+  margin-bottom: 20px; /* 테이블과의 하단 간격 */
+  text-align: right; /* 버튼들을 오른쪽으로 정렬 */
+  padding: 0; /* 불필요한 패딩 제거 */
+}
+
+.admin-content-box .action-buttons button,
+.admin-content-box .action-buttons a {
+  padding: 8px 16px; /* 버튼 내부 여백 */
+  margin-left: 8px; /* 버튼 사이 간격 */
+  border-radius: 5px; /* 버튼 모서리 둥글게 */
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+  font-size: 0.9em;
+  border: 1px solid transparent; /* 테두리 기본 투명 */
+  transition: all 0.2s ease-in-out;
+}
+
+/* 승인 버튼 */
+.admin-content-box .action-buttons .approve-btn {
+  background-color: #28a745;
+  color: white;
+  border-color: #28a745;
+}
+.admin-content-box .action-buttons .approve-btn:hover {
+  background-color: #218838;
+  border-color: #1e7e34;
+}
+
+/* 반려 버튼 */
+.admin-content-box .action-buttons .reject-btn {
+  background-color: #dc3545;
+  color: white;
+  border-color: #dc3545;
+}
+.admin-content-box .action-buttons .reject-btn:hover {
+  background-color: #c82333;
+  border-color: #bd2130;
+}
+
+/* 엑셀 버튼 */
+.admin-content-box .action-buttons .excel-btn {
+  background-color: #17a2b8;
+  color: white;
+  border-color: #17a2b8;
+}
+.admin-content-box .action-buttons .excel-btn:hover {
+  background-color: #138496;
+  border-color: #117a8b;
+}
+
+/* 테이블 위에 버튼 위치 조정 (HTML 구조 변경 필요 시 주석 처리) */
+/* .admin-content-box .action-buttons {
+    position: absolute; 
+    top: 30px; 
+    right: 30px; 
+} */
+/* 위 주석 해제 시, .admin-content-box 에 position: relative; 추가 필요 */
+/* .admin-content-box { position: relative; ... } */

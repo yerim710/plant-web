@@ -6,10 +6,6 @@
     <title>프로필</title>
     <link
       rel="stylesheet"
-      href="{{ url_for('static', filename='css/main.css') }}"
-    />
-    <link
-      rel="stylesheet"
       href="{{ url_for('static', filename='css/style.css') }}"
     />
   </head>
@@ -28,27 +24,21 @@
       <div class="sidebar">
         <h2>메뉴</h2>
         <ul>
-          {# 홈 - 모든 사용자에게 표시 #}
-          <li><a href="/main">홈</a></li>
+          {# --- 모든 사용자 공통 메뉴 --- #}
+          <li><a href="{{ url_for('main_page') }}" {% if page_type == 'main' %}class="active"{% endif %}>홈</a></li>
+          <li><a href="{{ url_for('profile_page') }}" {% if page_type == 'profile' %}class="active"{% endif %}>프로필</a></li>
 
-          {# 봉사 등록 - admin@test.com 이 아닌 승인된 관리자에게만 표시 #} {%
-          if current_user and current_user.is_admin and current_user.email !=
-          'admin@test.com' %}
-          <li><a href="/register-volunteer">봉사 등록</a></li>
-          {% endif %} {# 봉사 관리 - admin@test.com 이 아닌 승인된 관리자에게만
-          표시 #} {% if current_user and current_user.is_admin and
-          current_user.email != 'admin@test.com' %}
-          <li><a href="/manage-volunteers">봉사 관리</a></li>
-          {% endif %} {# 프로필 - 모든 사용자에게 표시 (현재 페이지이므로
-          active) #}
-          <li><a href="/profile" class="active">프로필</a></li>
-
-          {# 관리자 인증 - admin@test.com 이 아닌 사용자에게만 표시 #} {% if
-          current_user and current_user.email != 'admin@test.com' %}
-          <li><a href="/admin-verification">관리자 인증</a></li>
-          {% endif %} {# 관리자 승인 - admin@test.com 사용자에게만 표시 #} {% if
-          current_user and current_user.email == 'admin@test.com' %}
-          <li><a href="/admin/approve-requests">관리자 승인</a></li>
+          {# --- admin@test.com 전용 메뉴 --- #}
+          {% if current_user and current_user.email == 'admin@test.com' %}
+            <li><a href="{{ url_for('approve_requests_page') }}" {% if page_type == 'approve_requests' %}class="active"{% endif %}>관리자 승인</a></li>
+            <li><a href="{{ url_for('demand_stats_page') }}" {% if page_type == 'demand_stats' %}class="active"{% endif %}>수요처 실적 현황</a></li>
+          
+          {# --- 일반 사용자 (admin@test.com 제외 모든 사용자) 전용 메뉴 --- #}
+          {% else %}
+            <li><a href="{{ url_for('admin_verification') }}" {% if page_type == 'admin_verification' %}class="active"{% endif %}>관리자 인증</a></li>
+            <li><a href="{{ url_for('register_volunteer_page') }}" {% if page_type == 'register_volunteer' %}class="active"{% endif %}>봉사 등록</a></li>
+            <li><a href="{{ url_for('manage_volunteers_page') }}" {% if page_type == 'manage_volunteers' %}class="active"{% endif %}>봉사 관리</a></li>
+            <li><a href="{{ url_for('record_performance_page') }}" {% if page_type == 'record_performance' %}class="active"{% endif %}>실적 등록</a></li>
           {% endif %}
         </ul>
       </div>
@@ -236,7 +226,11 @@
               headers: {
                 "Content-Type": "application/json",
               },
-              body: JSON.stringify({ currentPassword, newPassword }),
+              body: JSON.stringify({
+                currentPassword,
+                newPassword,
+                confirmPassword,
+              }),
             });
 
             const data = await response.json();

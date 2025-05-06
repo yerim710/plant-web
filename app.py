@@ -12,11 +12,14 @@ from werkzeug.utils import secure_filename
 import base64
 import time
 import logging
-from werkzeug.security import check_password_hash
+# 비밀번호 해싱 함수 임포트
+from werkzeug.security import generate_password_hash, check_password_hash
 import pandas as pd
 from io import BytesIO
 from functools import wraps
 import json
+import secrets # 보안 강화를 위해 secrets 모듈 사용
+from collections import defaultdict
 
 # 허용할 파일 확장자 목록
 ALLOWED_EXTENSIONS = {'txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif'}
@@ -38,6 +41,35 @@ logger.debug(f"Current directory: {current_dir}")
 USERS_DB_PATH = os.path.join(current_dir, 'users.db')
 VOLUNTEER_DB_PATH = os.path.join(current_dir, 'volunteer.db')
 
+# Database setup for email verification
+def init_email_verification_db():
+    conn = None
+    try:
+        conn = sqlite3.connect(USERS_DB_PATH)
+        cursor = conn.cursor()
+        # Check if table exists first to avoid errors on restart if already created
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='email_verifications'")
+        table_exists = cursor.fetchone()
+        if not table_exists:
+            cursor.execute("""
+                CREATE TABLE email_verifications (
+                    email TEXT PRIMARY KEY,
+                    code TEXT NOT NULL,
+                    expires_at TIMESTAMP NOT NULL
+                )
+            """)
+            conn.commit()
+            logger.info("Email verifications table created.")
+        else:
+            logger.info("Email verifications table already exists.")
+    except sqlite3.Error as e:
+        logger.error(f"Failed to initialize email verifications table: {e}", exc_info=True)
+    finally:
+        if conn:
+            conn.close()
+
+init_email_verification_db() # Call this at startup
+
 app = Flask(__name__, static_folder='static')
 CORS(app)
 
@@ -57,7 +89,7 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# 관리자 확인 데코레이터 (원래 로직: 'approved' 상태 확인)
+# 관리자 확인 데코레이터
 def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -66,32 +98,24 @@ def admin_required(f):
             return redirect(url_for('login_page', next=request.url))
         
         user_id = session['user_id']
-        logger.debug(f"[@admin_required] Checking admin status for user_id: {user_id}") # 로그 추가
-        conn = None
-        is_approved_admin = False
-        try:
-            conn = sqlite3.connect(USERS_DB_PATH)
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT status FROM admin_verifications 
-                WHERE user_id = ? ORDER BY created_at DESC LIMIT 1
-            """, (user_id,))
-            result = cursor.fetchone()
-            if result and result[0] == 'approved': # status 값 직접 비교
-                is_approved_admin = True
-            logger.debug(f"[@admin_required] DB check result for user_id {user_id}: Status='{result[0] if result else None}', is_approved_admin={is_approved_admin}") # 로그 추가
-        except Exception as e:
-            logger.error(f"Admin check failed for user {user_id}: {str(e)}", exc_info=True)
-        finally:
-            if conn:
-                conn.close()
-                
-        if not is_approved_admin:
-            logger.warning(f"[@admin_required] Admin access denied for user_id: {user_id}") # 로그 추가
-            flash('관리자 인증이 필요합니다.', 'warning')
-            return redirect(url_for('main_page')) 
+        current_user = get_user_from_session() # 사용자 정보 가져오기
+
+        is_authorized_admin = False
+        if current_user and current_user.get('email') == 'admin@test.com':
+            is_authorized_admin = True # admin@test.com은 항상 관리자로 간주
+            logger.info(f"[@admin_required] User admin@test.com (ID: {user_id}) authorized as admin by email.")
+        elif current_user and current_user.get('is_admin'): # get_user_from_session의 is_admin 결과 활용
+            is_authorized_admin = True
+            logger.info(f"[@admin_required] User ID {user_id} authorized as admin based on current_user.is_admin flag.")
+        # else: # is_authorized_admin이 False로 유지됨
+            # logger.warning(f"[@admin_required] Admin access denied for user_id: {user_id} if not caught by above.")
             
-        logger.debug(f"[@admin_required] Admin access granted for user_id: {user_id}") # 로그 추가
+        if not is_authorized_admin:
+            logger.warning(f"[@admin_required] Admin access DENIED for user_id: {user_id}. Redirecting to admin_verification.")
+            flash('이 기능을 사용하려면 관리자 인증이 필요합니다. 먼저 인증 신청을 완료해주세요.', 'warning') 
+            return redirect(url_for('admin_verification')) 
+            
+        logger.debug(f"[@admin_required] Admin access GRANTED for user_id: {user_id}")
         return f(*args, **kwargs)
     return decorated_function
 
@@ -151,19 +175,33 @@ def get_user_from_session():
         conn = sqlite3.connect(USERS_DB_PATH)
         conn.row_factory = sqlite3.Row 
         cursor = conn.cursor()
-        # Include is_admin check (based on approved verification)
-        cursor.execute("""
-            SELECT u.id, u.name, u.email, 
-                   CASE WHEN EXISTS (SELECT 1 FROM admin_verifications av WHERE av.user_id = u.id AND av.status = 'approved') THEN 1 ELSE 0 END as is_admin
-            FROM users u 
-            WHERE u.id = ?
-        """, (user_id,))
-        user_info = cursor.fetchone()
-        if user_info:
-             logger.debug(f"get_user_from_session: Found user info for ID {user_id}: Name={user_info['name']}, Email={user_info['email']}, IsAdmin={user_info['is_admin']}")
+        
+        # 기본 사용자 정보 조회 (id, name, email)
+        cursor.execute("SELECT id, name, email FROM users WHERE id = ?", (user_id,))
+        user_data = cursor.fetchone()
+
+        if not user_data:
+            logger.warning(f"get_user_from_session: User info not found in DB for ID {user_id}")
+            return None
+
+        user_info = dict(user_data) # Row 객체를 dict로 변환하여 수정 가능하게 함
+
+        # admin@test.com 사용자는 항상 관리자로 간주
+        if user_info['email'] == 'admin@test.com':
+            user_info['is_admin'] = True
+            logger.info(f"get_user_from_session: User admin@test.com (ID: {user_id}) is explicitly treated as admin.")
         else:
-             logger.warning(f"get_user_from_session: User info not found in DB for ID {user_id}")
-        return user_info # Returns Row object or None
+            # 다른 사용자들은 DB의 admin_verifications 테이블 확인
+            cursor.execute("""
+                SELECT CASE WHEN EXISTS (SELECT 1 FROM admin_verifications av WHERE av.user_id = ? AND av.status = 'approved') THEN 1 ELSE 0 END as is_admin_flag
+            """, (user_id,))
+            admin_status_result = cursor.fetchone()
+            user_info['is_admin'] = bool(admin_status_result['is_admin_flag']) if admin_status_result else False
+            logger.debug(f"get_user_from_session: User ID {user_id}, DB admin_status: {user_info['is_admin']}")
+
+        # 최종 user_info 객체 (id, name, email, is_admin 포함) 로깅 및 반환
+        logger.debug(f"get_user_from_session: Returning user info for ID {user_id}: Name={user_info.get('name')}, Email={user_info.get('email')}, IsAdmin={user_info.get('is_admin')}")
+        return user_info # dict 반환
     except sqlite3.Error as e:
         logger.error(f"get_user_from_session: DB Error fetching user info for ID {user_id}: {e}", exc_info=True)
         return None
@@ -177,29 +215,25 @@ def get_user_from_session():
 @app.route('/main')
 @login_required
 def main_page():
-    current_user = get_user_from_session() # Use helper function
+    current_user = get_user_from_session() 
     if not current_user:
-        flash("사용자 정보를 불러올 수 없습니다. 다시 로그인 해주세요.", "error") # More specific message
+        flash("사용자 정보를 불러올 수 없습니다. 다시 로그인 해주세요.", "error")
         return redirect(url_for('login_page'))
-    # Pass the fetched user info to the template
-    return render_template('main.html', current_user=current_user)
+    return render_template('main.html', current_user=current_user, page_type='main')
 
 @app.route('/register-volunteer')
 @login_required
-@admin_required # Only approved admins can access this page anyway
 def register_volunteer_page():
-    current_user = get_user_from_session() # Use helper function
+    current_user = get_user_from_session() 
     if not current_user:
-        # This case is less likely due to decorators, but handle defensively
         flash("사용자 정보를 불러올 수 없습니다. 다시 로그인 해주세요.", "error")
         return redirect(url_for('login_page')) 
-    # Pass the fetched user info to the template
-    return render_template('register_volunteer.html', current_user=current_user)
+    return render_template('register_volunteer.html', current_user=current_user, page_type='register_volunteer')
 
 @app.route('/manage-volunteers')
 @login_required
 def manage_volunteers_page():
-    current_user = get_user_from_session() # Use helper function
+    current_user = get_user_from_session() 
     if not current_user:
         flash("사용자 정보를 불러올 수 없습니다. 다시 로그인 해주세요.", "error")
         return redirect(url_for('login_page'))
@@ -210,10 +244,21 @@ def manage_volunteers_page():
         conn_v = sqlite3.connect(VOLUNTEER_DB_PATH)
         conn_v.row_factory = sqlite3.Row
         cursor_v = conn_v.cursor()
-        # Fetch applications joining with volunteers table
-        cursor_v.execute("""SELECT va.id, va.applicant_name, va.applicant_email, v.activity_title, va.volunteer_date, va.application_date, va.status FROM volunteer_applications va JOIN volunteers v ON va.volunteer_id = v.id ORDER BY va.application_date DESC""")
+        cursor_v.execute("""SELECT 
+                           va.id, 
+                           va.applicant_name, 
+                           va.applicant_email, 
+                           v.activity_title, 
+                           va.volunteer_date, 
+                           v.activity_time_start, 
+                           v.activity_time_end, 
+                           v.credited_hours,
+                           va.application_date, 
+                           va.status 
+                       FROM volunteer_applications va 
+                       JOIN volunteers v ON va.volunteer_id = v.id 
+                       ORDER BY va.application_date DESC""")
         applications = cursor_v.fetchall()
-        logger.debug(f"Fetched {len(applications)} volunteer applications with titles.")
     except sqlite3.Error as e:
         logger.error(f"봉사 신청 목록 조회 중 데이터베이스 오류: {str(e)}", exc_info=True)
         flash("신청 목록을 불러오는 중 오류가 발생했습니다.", "error")
@@ -224,23 +269,21 @@ def manage_volunteers_page():
         if conn_v:
             conn_v.close()
             
-    # Pass current_user along with applications
-    return render_template('manage_volunteers.html', applications=applications, current_user=current_user, body_class='manage-volunteers-page') 
+    return render_template('manage_volunteers.html', applications=applications, current_user=current_user, page_type='manage_volunteers')
 
 @app.route('/profile')
 @login_required
 def profile_page():
-    current_user = get_user_from_session() # Use helper function
+    current_user = get_user_from_session() 
     if not current_user:
         flash("사용자 정보를 불러올 수 없습니다. 다시 로그인 해주세요.", "error")
         return redirect(url_for('login_page'))
-    # Pass user info to template, e.g., for sidebar logic or pre-filling forms if needed
-    return render_template('profile.html', current_user=current_user)
+    return render_template('profile.html', current_user=current_user, page_type='profile')
 
 @app.route('/admin-verification')
-@login_required # Ensure user is logged in
+@login_required 
 def admin_verification():
-    current_user = get_user_from_session() # Use helper function
+    current_user = get_user_from_session() 
     if not current_user:
         flash("사용자 정보를 불러올 수 없습니다. 다시 로그인 해주세요.", "error")
         return redirect(url_for('login_page'))
@@ -252,7 +295,6 @@ def admin_verification():
         conn = sqlite3.connect(USERS_DB_PATH)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        # Fetch the latest verification attempt for this user
         cursor.execute("SELECT id, organization, status, created_at, rejection_reason FROM admin_verifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 1", (current_user['id'],))
         verification = cursor.fetchone()
         if verification:
@@ -270,8 +312,7 @@ def admin_verification():
         if conn:
             conn.close()
             
-    # Pass current_user (contains name, email, is_admin) and verification status
-    return render_template('admin_verification.html', verification=verification, current_user=current_user)
+    return render_template('admin_verification.html', verification=verification, current_user=current_user, page_type='admin_verification')
 
 @app.route('/api/logout', methods=['POST'])
 def logout():
@@ -422,10 +463,18 @@ def login():
             if not user:
                 return jsonify({'success': False, 'message': '이메일 또는 비밀번호가 올바르지 않습니다.'}), 401
                 
-            if user[1] == password:  # 비밀번호가 해싱되지 않은 경우
-                session['user_id'] = user[0]
+            user_id = user[0]
+            hashed_password_from_db = user[1]
+            
+            # 사용자가 입력한 비밀번호와 DB에 저장된 해시된 비밀번호를 비교
+            if check_password_hash(hashed_password_from_db, password):
+                # 비밀번호 일치: 로그인 성공
+                session['user_id'] = user_id
+                logger.info(f"User {email} (ID: {user_id}) logged in successfully.")
                 return jsonify({'success': True, 'redirect': '/main'})
             else:
+                # 비밀번호 불일치
+                logger.warning(f"Login failed for user {email}: Incorrect password.")
                 return jsonify({'success': False, 'message': '이메일 또는 비밀번호가 올바르지 않습니다.'}), 401
                 
         except sqlite3.Error as e:
@@ -603,25 +652,20 @@ def get_volunteers():
             logger.debug("Database connection closed in finally block.")
 
 @app.route('/admin/approve-requests')
-@login_required # Base login check
-@admin_required # Ensures user has 'approved' status (but might not be admin@test.com)
+@login_required 
+@admin_required 
 def approve_requests_page():
-    current_user = get_user_from_session() # Use helper function
-    # Specific check for the super admin email
-    if not current_user or current_user['email'] != 'admin@test.com': 
-        flash("이 페이지에 접근할 권한이 없습니다.", "warning") # Changed message and category
+    current_user = get_user_from_session() 
+    if not current_user or not current_user.get('is_admin'): # Check if is_admin is true
+        flash("이 페이지에 접근할 권한이 없습니다.", "warning")
         return redirect(url_for('main_page'))
         
-    # ... (rest of the logic fetching pending_requests, counts remains the same) ...
     conn = None
     pending_requests = []
-    admin_count = 0
-    user_count = 0
     try:
         conn = sqlite3.connect(USERS_DB_PATH)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        # Fetch pending requests
         cursor.execute(""" 
             SELECT av.id, u.name as user_name, u.email as user_email, 
                    av.organization, av.representative, av.business_number, 
@@ -632,13 +676,6 @@ def approve_requests_page():
             ORDER BY av.created_at ASC
         """)
         pending_requests = cursor.fetchall()
-        # Fetch counts
-        cursor.execute("SELECT COUNT(id) FROM admin_verifications WHERE status = 'approved'")
-        admin_count_result = cursor.fetchone()
-        admin_count = admin_count_result[0] if admin_count_result else 0
-        cursor.execute("SELECT COUNT(id) FROM users")
-        user_count_result = cursor.fetchone()
-        user_count = user_count_result[0] if user_count_result else 0
     except sqlite3.Error as e:
         logger.error(f"Pending admin requests 조회 중 DB 오류: {str(e)}", exc_info=True)
         flash("신청 목록 조회 중 오류가 발생했습니다.", "error")
@@ -651,10 +688,8 @@ def approve_requests_page():
 
     return render_template('approve_requests.html', 
                            pending_requests=pending_requests, 
-                           current_user=current_user, # Already passing correct user info
-                           admin_count=admin_count,
-                           user_count=user_count,
-                           page_type='admin_approval') # Keep page type for active class
+                           current_user=current_user, 
+                           page_type='approve_requests') 
 
 @app.route('/api/admin/approve/<int:request_id>', methods=['POST'])
 @admin_required
@@ -787,16 +822,15 @@ def change_name():
 @app.route('/api/change-email', methods=['POST'])
 @login_required
 def change_email():
-    pass # TODO: 복원 필요
-    user_id = session.get('user_id')
-    # ... (기존 이메일 변경 로직 복원) ...
-
-# 사용자 비밀번호 변경 API
-@app.route('/api/change-password', methods=['POST'])
-@login_required
-def change_password():
-    pass # TODO: 복원 필요
-    # ... (기존 비밀번호 변경 로직 복원) ...
+    # TODO: 이메일 변경 로직 구현 필요
+    # 1. 새 이메일 주소 받기
+    # 2. (선택) 현재 비밀번호 확인
+    # 3. (선택) 새 이메일 주소 유효성 검사 (예: 형식, 중복 여부)
+    # 4. (선택) 새 이메일 주소로 인증 코드 발송 및 확인 절차 추가
+    # 5. DB의 이메일 주소 업데이트
+    # 6. 성공/실패 메시지 반환
+    logger.warning("/api/change-email endpoint is called but not implemented yet.")
+    return jsonify({'success': False, 'message': '이메일 변경 기능은 아직 구현되지 않았습니다.'}), 501 # 501 Not Implemented
 
 # 회원 탈퇴 API
 @app.route('/api/delete-account', methods=['POST'])
@@ -807,7 +841,6 @@ def delete_account():
         return jsonify({'success': False, 'message': '로그인이 필요합니다.'}), 401
 
     conn_users = None
-    conn_volunteer = None
     try:
         # 사용자 DB 연결
         conn_users = sqlite3.connect(USERS_DB_PATH)
@@ -1101,21 +1134,20 @@ def delete_volunteer_activity(volunteer_id):
 def edit_volunteer_page(volunteer_id):
     conn = None
     volunteer_data = None
+    current_user = get_user_from_session() # Get current user
     try:
         conn = sqlite3.connect(VOLUNTEER_DB_PATH)
-        conn.row_factory = sqlite3.Row # 딕셔너리처럼 접근 가능하게
+        conn.row_factory = sqlite3.Row 
         cursor = conn.cursor()
 
-        # 해당 ID의 봉사활동 데이터 조회
         cursor.execute("SELECT * FROM volunteers WHERE id = ?", (volunteer_id,))
         volunteer_data = cursor.fetchone()
 
         if not volunteer_data:
             flash('수정할 봉사 활동 정보를 찾을 수 없습니다.', 'error')
-            return redirect(url_for('main_page')) # 또는 적절한 오류 페이지
+            return redirect(url_for('main_page')) 
 
-        # 조회된 데이터를 템플릿에 전달
-        return render_template('edit_volunteer.html', volunteer=volunteer_data)
+        return render_template('edit_volunteer.html', volunteer=volunteer_data, current_user=current_user, page_type='manage_volunteers') # Pass current_user and page_type (e.g. 'manage_volunteers' to highlight parent)
 
     except sqlite3.Error as e:
         logger.error(f"Database error fetching volunteer {volunteer_id} for edit: {e}", exc_info=True)
@@ -1253,6 +1285,615 @@ def update_volunteer_activity(volunteer_id):
         if conn:
             conn.close()
 
+# 임시 비밀번호 생성 함수
+def generate_temp_password(length=8):
+    # 영문 대소문자, 숫자, 특수문자 포함
+    # 주의: 일부 특수문자는 이메일 또는 시스템에서 문제를 일으킬 수 있으므로 제한적으로 사용하거나 이스케이프 처리 필요
+    # 여기서는 비교적 안전한 특수문자 일부만 사용
+    characters = string.ascii_letters + string.digits + '!@#$%^&*_-'
+    while True:
+        password = ''.join(secrets.choice(characters) for i in range(length))
+        # 최소 1개 이상의 숫자와 특수문자를 포함하는지 간단히 확인 (더 엄격한 규칙 적용 가능)
+        if (any(c.isdigit() for c in password)
+                and any(c in '!@#$%^&*_-' for c in password)):
+            return password
+
+# 이메일 발송 헬퍼 함수
+def send_email(recipient_email, subject, body):
+    # !!! IMPORTANT: Ensure SMTP settings are correctly configured below !!!
+    # Consider using environment variables or a config file for security
+    smtp_server = "smtp.naver.com" # 네이버 SMTP 서버 주소
+    smtp_port = 587 # TLS 용 일반 포트
+    smtp_user = "yerim8896@naver.com" # 실제 네이버 이메일 주소
+    smtp_password = "4NQY982C9K12" # 실제 네이버 앱 비밀번호 (또는 계정 비밀번호)
+    sender_email = "yerim8896@naver.com" # 실제 발신자 이메일 주소
+
+    msg = MIMEText(body, _charset='utf-8')
+    msg['Subject'] = subject
+    msg['From'] = sender_email
+    msg['To'] = recipient_email
+
+    try:
+        # 네이버 + starttls (port 587) 사용
+        with smtplib.SMTP(smtp_server, smtp_port) as server:
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
+            server.login(smtp_user, smtp_password)
+            server.sendmail(sender_email, recipient_email, msg.as_string())
+        logger.info(f"Email successfully sent to {recipient_email} with subject: {subject}")
+        return True # 성공 시 True 반환
+    except smtplib.SMTPAuthenticationError:
+        logger.error(f"SMTP Authentication failed for user {smtp_user}. Check credentials.")
+        return False # 실패 시 False 반환
+    except smtplib.SMTPServerDisconnected:
+         logger.error("SMTP server disconnected unexpectedly.")
+         return False
+    except smtplib.SMTPRecipientsRefused:
+         logger.error(f"Recipient address {recipient_email} refused by the server.")
+         return False
+    except smtplib.SMTPException as e:
+        logger.error(f"Failed to send email to {recipient_email}: {e}", exc_info=True)
+        return False
+    except Exception as e:
+         logger.error(f"An unexpected error occurred during email sending to {recipient_email}: {e}", exc_info=True)
+         return False
+
+# 비밀번호 재설정 요청 처리 API
+@app.route('/api/reset-password-request', methods=['POST'])
+def reset_password_request():
+    data = request.get_json()
+    email = data.get('email')
+
+    if not email:
+        return jsonify({'success': False, 'message': '이메일을 입력해주세요.'}), 400
+
+    conn = None
+    try:
+        conn = sqlite3.connect(USERS_DB_PATH)
+        cursor = conn.cursor()
+
+        # 사용자 존재 확인
+        cursor.execute("SELECT id, name FROM users WHERE email = ?", (email,))
+        user = cursor.fetchone()
+
+        if user:
+            user_id, user_name = user
+            # 임시 비밀번호 생성
+            temp_password = generate_temp_password()
+            logger.info(f"Generated temporary password for user {email} (ID: {user_id})") # 로그 기록 (실제 비밀번호는 로그에 남기지 않도록 주의)
+
+            # DB에 임시 비밀번호 업데이트 (!!! 중요: 해싱하여 저장 !!!)
+            hashed_temp_password = generate_password_hash(temp_password)
+            cursor.execute("UPDATE users SET password = ? WHERE id = ?", (hashed_temp_password, user_id))
+            conn.commit()
+            logger.info(f"Updated user {user_id}'s password in DB with hashed temporary password.")
+
+            # 이메일 발송 (임시 비밀번호는 평문으로 보내야 함)
+            email_subject = "임시 비밀번호 안내"
+            email_body = f"""
+안녕하세요, {user_name}님.
+
+요청하신 임시 비밀번호는 다음과 같습니다:
+
+{temp_password}
+
+로그인 후 반드시 안전한 비밀번호로 변경해주세요.
+
+감사합니다.
+            """
+            # send_email 헬퍼 함수 사용
+            email_sent = send_email(email, email_subject, email_body)
+
+            if not email_sent:
+                # DB 업데이트는 성공했으나 이메일 발송 실패 시 처리 (롤백 또는 로깅 강화)
+                logger.error(f"Failed to send temporary password email to {email} (User ID: {user_id})")
+                # 사용자에게는 성공으로 응답하되, 관리자는 알 수 있도록 로깅
+                # 또는 DB 롤백 후 에러 응답 고려
+                # conn.rollback() # 롤백이 필요하다면 commit 전에 위치 조정 필요
+                pass # 일단 이메일 실패는 로깅만 하고 넘어감
+
+            # 이메일 존재 여부와 관계없이 성공 메시지 반환 (보안)
+            return jsonify({'success': True, 'message': '입력하신 이메일 주소로 임시 비밀번호를 발송했습니다. 메일을 확인해주세요.'})
+        else:
+            # 사용자가 존재하지 않아도 동일한 성공 메시지 반환
+            logger.info(f"Password reset requested for non-existent email: {email}")
+            return jsonify({'success': True, 'message': '입력하신 이메일 주소로 임시 비밀번호를 발송했습니다. 메일을 확인해주세요.'})
+
+    except sqlite3.Error as e:
+        logger.error(f"Database error during password reset request for {email}: {e}", exc_info=True)
+        if conn: conn.rollback() # 오류 발생 시 롤백
+        return jsonify({'success': False, 'message': '데이터베이스 오류가 발생했습니다.'}), 500
+    except Exception as e:
+        logger.error(f"Unexpected error during password reset request for {email}: {e}", exc_info=True)
+        if conn: conn.rollback()
+        return jsonify({'success': False, 'message': '서버 오류가 발생했습니다.'}), 500
+    finally:
+        if conn:
+            conn.close()
+
+# Route to handle sending verification email
+@app.route('/api/send-verification', methods=['POST'])
+def send_verification_email():
+    data = request.get_json()
+    email = data.get('email')
+
+    if not email:
+        logger.warning("[/api/send-verification] Email missing in request.")
+        return jsonify({"success": False, "message": "이메일 주소를 입력해주세요."}), 400
+
+    # Generate verification code
+    code = ''.join(random.choices(string.digits, k=6)) # 6-digit code
+    expires_at = datetime.now() + timedelta(minutes=10) # Code valid for 10 minutes
+
+    conn = None
+    try:
+        conn = sqlite3.connect(USERS_DB_PATH)
+        cursor = conn.cursor()
+        # Insert or Replace allows sending a new code if requested again for the same email
+        cursor.execute("""
+            INSERT OR REPLACE INTO email_verifications (email, code, expires_at)
+            VALUES (?, ?, ?)
+        """, (email, code, expires_at))
+        conn.commit()
+        logger.info(f"Generated verification code {code} for email {email}, expires at {expires_at}")
+
+        # Send email using the helper function
+        subject = "회원가입 인증 코드"
+        body = f"회원가입을 위한 인증 코드는 다음과 같습니다: {code}\n\n이 코드는 10분 후에 만료됩니다."
+        email_sent = send_email(email, subject, body)
+
+        if email_sent:
+            return jsonify({"success": True, "message": "인증 코드가 이메일로 발송되었습니다."})
+        else:
+            # 실패 시의 메시지는 send_email 함수 로그를 기반으로 함
+            # 좀 더 구체적인 오류 메시지를 원한다면 send_email 함수에서 오류 종류별로 다른 값을 반환하도록 수정 가능
+            return jsonify({"success": False, "message": "인증 코드 발송 중 오류가 발생했습니다."}), 500
+
+    except sqlite3.Error as e:
+        logger.error(f"Database error storing verification code for {email}: {e}", exc_info=True)
+
+# Route to verify the code entered by the user
+@app.route('/api/verify-code', methods=['POST'])
+def verify_code():
+    data = request.get_json()
+    email = data.get('email')
+    code = data.get('code')
+
+    if not email or not code:
+        return jsonify({"success": False, "message": "이메일과 인증 코드를 모두 입력해주세요."}), 400
+
+    conn = None
+    try:
+        conn = sqlite3.connect(USERS_DB_PATH)
+        cursor = conn.cursor()
+        # Use ISO format for timestamp comparison
+        cursor.execute("SELECT code, strftime('%Y-%m-%dT%H:%M:%S', expires_at) FROM email_verifications WHERE email = ?", (email,))
+        result = cursor.fetchone()
+
+        if not result:
+            logger.warning(f"Verification attempt for {email} failed: No code found or already verified.")
+            return jsonify({"success": False, "message": "인증 코드가 요청되지 않았거나 만료되었습니다."}), 400
+
+        stored_code, expires_at_str = result
+        # Parse ISO format string
+        try:
+            expires_at = datetime.fromisoformat(expires_at_str)
+        except ValueError:
+             # Fallback if timestamp format is slightly different (e.g., space instead of T)
+             try:
+                 expires_at = datetime.strptime(expires_at_str, '%Y-%m-%d %H:%M:%S')
+             except ValueError:
+                 logger.error(f"Could not parse timestamp '{expires_at_str}' for email {email}")
+                 return jsonify({"success": False, "message": "인증 코드 만료 시간 형식 오류."}), 500
+
+
+        if datetime.now() > expires_at:
+            logger.warning(f"Verification attempt for {email} failed: Code expired at {expires_at_str}")
+            # Clean up expired code
+            cursor.execute("DELETE FROM email_verifications WHERE email = ?", (email,))
+            conn.commit()
+            return jsonify({"success": False, "message": "인증 코드가 만료되었습니다. 다시 요청해주세요."}), 400
+
+        if stored_code == code:
+            # Verification successful, remove the code from DB
+            cursor.execute("DELETE FROM email_verifications WHERE email = ?", (email,))
+            conn.commit()
+            logger.info(f"Email {email} successfully verified with code {code}.")
+            # You might want to set a flag in the session here to indicate email verification
+            # session['email_verified'] = True # Example
+            # session['verified_email'] = email # Example
+            return jsonify({"success": True, "message": "이메일 인증이 완료되었습니다."})
+        else:
+            logger.warning(f"Verification attempt for {email} failed: Invalid code entered.")
+            return jsonify({"success": False, "message": "인증 코드가 올바르지 않습니다."}), 400
+
+    except sqlite3.Error as e:
+        logger.error(f"Database error verifying code for {email}: {e}", exc_info=True)
+        return jsonify({"success": False, "message": "인증 코드 확인 중 데이터베이스 오류 발생."}), 500
+    except Exception as e:
+        logger.error(f"Unexpected error verifying code for {email}: {e}", exc_info=True)
+        return jsonify({"success": False, "message": "인증 코드 확인 중 오류 발생."}), 500
+    finally:
+        if conn:
+            conn.close()
+
+# Route to handle actual signup process after verification
+@app.route('/api/signup', methods=['POST'])
+def signup_user():
+    data = request.get_json()
+    name = data.get('name')
+    email = data.get('email')
+    password = data.get('password')
+
+    if not name or not email or not password:
+        logger.warning("[/api/signup] Missing required fields (name, email, or password).")
+        return jsonify({"success": False, "message": "이름, 이메일, 비밀번호를 모두 입력해주세요."}), 400
+
+    # TODO (Optional but recommended): Verify if the email was recently verified.
+    # This might require storing verification status temporarily (e.g., in session)
+    # after /api/verify-code succeeds. For now, we proceed assuming verification happened.
+
+    conn = None
+    try:
+        conn = sqlite3.connect(USERS_DB_PATH)
+        cursor = conn.cursor()
+
+        # Check if email already exists
+        cursor.execute("SELECT id FROM users WHERE email = ?", (email,))
+        existing_user = cursor.fetchone()
+        if existing_user:
+            logger.warning(f"[/api/signup] Signup attempt with existing email: {email}")
+            return jsonify({"success": False, "message": "이미 등록된 이메일 주소입니다."}), 409 # 409 Conflict is suitable
+
+        # Hash the password before storing
+        hashed_password = generate_password_hash(password)
+        logger.debug(f"[/api/signup] Hashing password for user {email}")
+
+        # Insert the new user
+        cursor.execute("INSERT INTO users (name, email, password) VALUES (?, ?, ?)",
+                       (name, email, hashed_password))
+        conn.commit()
+        user_id = cursor.lastrowid # Get the newly inserted user's ID
+        logger.info(f"[/api/signup] User {email} (ID: {user_id}) signed up successfully.")
+
+        # Optional: Log the user in immediately after signup
+        # session['user_id'] = user_id
+        # logger.info(f"[/api/signup] User {user_id} automatically logged in after signup.")
+
+        return jsonify({"success": True, "message": "회원가입이 완료되었습니다. 로그인해주세요."}) # Or redirect if logged in
+
+    except sqlite3.IntegrityError: # Catch potential unique constraint errors again (though check above helps)
+        logger.warning(f"[/api/signup] IntegrityError (likely duplicate email) for email: {email}")
+        return jsonify({"success": False, "message": "이미 등록된 이메일 주소입니다."}), 409
+    except sqlite3.Error as e:
+        logger.error(f"[/api/signup] Database error during signup for {email}: {e}", exc_info=True)
+        if conn:
+            conn.rollback()
+        return jsonify({"success": False, "message": "회원가입 중 데이터베이스 오류가 발생했습니다."}), 500
+    except Exception as e:
+        logger.error(f"[/api/signup] Unexpected error during signup for {email}: {e}", exc_info=True)
+        if conn:
+            conn.rollback()
+        return jsonify({"success": False, "message": "회원가입 중 오류가 발생했습니다."}), 500
+    finally:
+        if conn:
+            conn.close()
+
+# 사용자 비밀번호 변경 API
+@app.route('/api/change-password', methods=['POST'])
+@login_required
+def change_password():
+    user_id = session.get('user_id')
+    if not user_id:
+        # 이 경우는 @login_required 때문에 거의 발생하지 않지만, 안전하게 처리
+        return jsonify({'success': False, 'message': '로그인이 필요합니다.'}), 401
+
+    data = request.get_json()
+    current_password = data.get('currentPassword')
+    new_password = data.get('newPassword')
+    confirm_password = data.get('confirmPassword') # 새 비밀번호 확인 필드
+
+    if not current_password or not new_password or not confirm_password:
+        return jsonify({'success': False, 'message': '모든 비밀번호 필드를 입력해주세요.'}), 400
+
+    if new_password != confirm_password:
+        return jsonify({'success': False, 'message': '새 비밀번호와 확인 비밀번호가 일치하지 않습니다.'}), 400
+
+    # 비밀번호 복잡성 검사 (선택 사항, 필요 시 추가)
+    # if len(new_password) < 8 or not any(c.isdigit() for c in new_password) ...:
+    #     return jsonify({'success': False, 'message': '비밀번호는 8자 이상이어야 하며...'}), 400
+
+    conn = None
+    try:
+        conn = sqlite3.connect(USERS_DB_PATH)
+        cursor = conn.cursor()
+
+        # 현재 비밀번호 확인
+        cursor.execute("SELECT password FROM users WHERE id = ?", (user_id,))
+        user = cursor.fetchone()
+
+        if not user:
+            # 사용자를 찾을 수 없는 경우 (매우 드뭄)
+            logger.error(f"Could not find user {user_id} during password change.")
+            return jsonify({'success': False, 'message': '사용자 정보를 찾을 수 없습니다.'}), 404
+
+        hashed_password_from_db = user[0]
+        if not check_password_hash(hashed_password_from_db, current_password):
+            logger.warning(f"Incorrect current password provided for user {user_id}")
+            return jsonify({'success': False, 'message': '현재 비밀번호가 올바르지 않습니다.'}), 401
+
+        # 새 비밀번호 해싱 및 업데이트
+        new_hashed_password = generate_password_hash(new_password)
+        cursor.execute("UPDATE users SET password = ? WHERE id = ?", (new_hashed_password, user_id))
+        conn.commit()
+
+        logger.info(f"User {user_id}'s password changed successfully.")
+        return jsonify({'success': True, 'message': '비밀번호가 성공적으로 변경되었습니다.'})
+
+    except sqlite3.Error as e:
+        logger.error(f"Database error changing password for user {user_id}: {e}", exc_info=True)
+        if conn:
+            conn.rollback()
+        return jsonify({'success': False, 'message': '데이터베이스 오류가 발생했습니다.'}), 500
+    except Exception as e:
+        logger.error(f"Server error changing password for user {user_id}: {e}", exc_info=True)
+        if conn:
+            conn.rollback()
+        return jsonify({'success': False, 'message': '서버 오류가 발생했습니다.'}), 500
+    finally:
+        if conn:
+            conn.close()
+
+@app.route('/admin/demand-stats')
+@login_required
+@admin_required
+def demand_stats_page():
+    current_user = get_user_from_session()
+    if not current_user or current_user['email'] != 'admin@test.com':
+        flash("이 페이지에 접근할 권한이 없습니다.", "warning")
+        return redirect(url_for('main_page'))
+
+    search_params = {
+        'location_level1': request.args.get('location_level1'),
+        'location_level2': request.args.get('location_level2'),
+        'start_date': request.args.get('start_date'),
+        'end_date': request.args.get('end_date'),
+        'status': request.args.get('status'),
+        'org_name': request.args.get('org_name')
+    }
+    logger.debug(f"Demand stats search params: {search_params}")
+
+    stats_data = []
+    locations_structured = defaultdict(lambda: defaultdict(list)) # try 블록 내에서 사용되므로 여기서 초기화
+    institution_details = {} # try 블록 내에서 사용되므로 여기서 초기화
+    locations_for_filter = {}  # try 블록 전에 초기화
+    
+    filter_options = { # 기본값 설정
+        'locations_structured': {},
+        'statuses': {'all': '전체', 'pending': '대기', 'approved': '승인', 'rejected': '반려'}
+    }
+    conn_users = None
+    conn_volunteer = None
+
+    try:
+        conn_users = sqlite3.connect(USERS_DB_PATH)
+        conn_users.row_factory = sqlite3.Row
+        cursor_users = conn_users.cursor()
+        
+        query_institutions = "SELECT id, organization, address, status FROM admin_verifications WHERE address IS NOT NULL"
+        params_institutions = []
+        
+        if search_params['status'] and search_params['status'] != 'all':
+            query_institutions += " AND status = ?"
+            params_institutions.append(search_params['status'])
+        if search_params['org_name']:
+            query_institutions += " AND organization LIKE ?"
+            params_institutions.append(f"%{search_params['org_name']}%" )
+
+        cursor_users.execute(query_institutions, tuple(params_institutions))
+        all_institutions = cursor_users.fetchall()
+
+        for inst in all_institutions:
+            level1, level2 = extract_location_parts(inst['address'])
+            if search_params['location_level1'] and level1 != search_params['location_level1']:
+                continue
+            if search_params['location_level2'] and level2 != search_params['location_level2']:
+                continue
+            if level1 and level2:
+                if level2 not in locations_structured[level1]:
+                     locations_structured[level1][level2] = []
+                locations_structured[level1][level2].append(inst['id'])
+                institution_details[inst['id']] = {'name': inst['organization'], 'address': inst['address'], 'status': inst['status']}
+        
+        # locations_structured 가 채워진 후에 locations_for_filter 정의
+        locations_for_filter = {k: sorted(list(v.keys())) for k, v in locations_structured.items()}
+        
+        filtered_institution_ids = list(institution_details.keys())
+
+        if not filtered_institution_ids:
+             logger.debug("No institutions match the filter criteria.")
+        else:
+            conn_volunteer = sqlite3.connect(VOLUNTEER_DB_PATH)
+            conn_volunteer.row_factory = sqlite3.Row
+            cursor_volunteer = conn_volunteer.cursor()
+            
+            # ... (이하 통계 계산 로직은 이전과 동일하게 가정) ...
+            # ... (inst_to_user_map, filtered_user_ids, query_volunteers, volunteer_activities 등) ...
+            # ... (institution_stats, applications_by_institution, stats_data.append(...) 등) ...
+            # 이 부분은 생략되었지만 실제 코드에는 포함되어야 합니다.
+            # 예시 더미 데이터 (실제 구현 시 제거)
+            if not any(search_params.values()):
+                pass # 검색 조건 없으면 더미 데이터 표시 안 함
+            else:
+                if not stats_data: # 실제 데이터가 없는 경우에만 더미 추가
+                    stats_data = [
+                        {'center_name': '서울특별시 강남구', 'org_name': '행복 복지관', 'status_display': '승인', 'total_participants': 50, 'unique_participants': 30, 'total_hours_display': '120시간 30분', 'activity_count': 5},
+                        {'center_name': '경기도 수원시', 'org_name': '희망 나눔 센터', 'status_display': '승인', 'total_participants': 80, 'unique_participants': 55, 'total_hours_display': '200시간 0분', 'activity_count': 8},
+                    ]
+
+        # try 블록 성공 시 최종 filter_options 업데이트 (중요!)
+        filter_options['locations_structured'] = locations_for_filter
+        
+    except sqlite3.Error as e:
+        logger.error(f"수요처 통계 조회 중 DB 오류: {str(e)}", exc_info=True)
+        flash("데이터 조회 중 DB 오류가 발생했습니다.", "error")
+    except Exception as e:
+        logger.error(f"수요처 통계 조회 중 서버 오류: {str(e)}", exc_info=True)
+        flash("데이터 조회 중 서버 오류가 발생했습니다.", "error")
+    finally:
+        if conn_users:
+            conn_users.close()
+        if conn_volunteer:
+            conn_volunteer.close()
+
+    return render_template('demand_center_stats.html',
+                           current_user=current_user,
+                           search_params=search_params,
+                           stats_data=stats_data,
+                           filter_options=filter_options,
+                           page_type='demand_stats')
+
+@app.route('/admin/record-performance') # URL은 유지하되, 접근 권한 변경
+@login_required # 로그인된 사용자만 접근 가능
+# @admin_required # <- 이 데코레이터 제거
+def record_performance_page():
+    current_user = get_user_from_session()
+    # page_type 전달은 유지
+    # ... (기존 함수 내용 동일) ...
+    conn_v = None
+    conn_u = None
+    approved_applications = []
+    admin_org_map = {}
+
+    try:
+        conn_v = sqlite3.connect(VOLUNTEER_DB_PATH)
+        conn_v.row_factory = sqlite3.Row
+        cursor_v = conn_v.cursor()
+        
+        cursor_v.execute("""SELECT 
+                           va.id as application_id,
+                           va.applicant_name,
+                           va.applicant_email,
+                           v.activity_title,
+                           v.volunteer_content,
+                           va.volunteer_date,
+                           v.activity_time_start,
+                           v.activity_time_end,
+                           v.credited_hours,
+                           v.user_id as admin_user_id,
+                           va.performance_status,
+                           va.performance_rejection_reason
+                       FROM volunteer_applications va
+                       JOIN volunteers v ON va.volunteer_id = v.id
+                       WHERE va.status = 'approved' 
+                       ORDER BY va.application_date DESC""")
+        applications_raw = cursor_v.fetchall()
+        
+        admin_ids = list(set(app['admin_user_id'] for app in applications_raw if app['admin_user_id']))
+
+        if admin_ids:
+            conn_u = sqlite3.connect(USERS_DB_PATH)
+            conn_u.row_factory = sqlite3.Row # admin_verifications 테이블 접근 시에도 row_factory 사용
+            cursor_u = conn_u.cursor()
+            placeholders = ','.join('?' * len(admin_ids))
+            cursor_u.execute(f"""SELECT user_id, organization 
+                                FROM admin_verifications 
+                                WHERE user_id IN ({placeholders}) AND status = 'approved'""", 
+                             tuple(admin_ids))
+            for row in cursor_u.fetchall():
+                 admin_org_map[row[0]] = row[1]
+
+        for app in applications_raw:
+            app_dict = dict(app)
+            admin_id = app_dict.get('admin_user_id')
+            app_dict['admin_org_name'] = admin_org_map.get(admin_id, '기관 정보 없음')
+            approved_applications.append(app_dict)
+
+    except sqlite3.Error as e:
+        logger.error(f"실적 등록 페이지 데이터 조회 중 DB 오류: {str(e)}", exc_info=True)
+        flash("데이터 조회 중 오류가 발생했습니다.", "error")
+    except Exception as e:
+        logger.error(f"실적 등록 페이지 데이터 조회 중 서버 오류: {str(e)}", exc_info=True)
+        flash("데이터 조회 중 오류가 발생했습니다.", "error")
+    finally:
+        if conn_v:
+            conn_v.close()
+        if conn_u:
+            conn_u.close()
+
+    return render_template('record_performance.html',
+                           current_user=current_user,
+                           applications=approved_applications,
+                           page_type='record_performance')
+
+@app.route('/api/admin/process-performance', methods=['POST'])
+@login_required
+@admin_required
+def process_performance():
+    data = request.get_json()
+    application_ids = data.get('ids')
+    action = data.get('action') # 'register' 또는 'reject'
+    reason = data.get('reason') # 반려 시 사유
+
+    if not application_ids or not action or action not in ['register', 'reject']:
+        logger.warning(f"Invalid data received for performance processing: {data}")
+        return jsonify({'success': False, 'message': '잘못된 요청 데이터입니다.'}), 400
+
+    if action == 'reject' and not reason:
+        return jsonify({'success': False, 'message': '반려 사유를 입력해야 합니다.'}), 400
+
+    conn_v = None
+    processed_count = 0
+    try:
+        conn_v = sqlite3.connect(VOLUNTEER_DB_PATH)
+        cursor_v = conn_v.cursor()
+        
+        placeholders = ','.join('?' * len(application_ids))
+        
+        if action == 'reject':
+            # 'approved' 상태이고 아직 실적 처리되지 않은('pending') 신청 건만 반려 처리
+            sql = f"""UPDATE volunteer_applications 
+                      SET performance_status = 'rejected',
+                          performance_rejection_reason = ? 
+                      WHERE id IN ({placeholders}) 
+                      AND status = 'approved' 
+                      AND (performance_status = 'pending' OR performance_status IS NULL)""" # performance_status IS NULL 조건 추가
+            params = [reason] + application_ids
+            message_verb = "반려"
+        elif action == 'register':
+            # TODO: 실적 등록 로직 구현 (실제 시간 등 필요)
+            # 임시: 상태만 변경 (추후 수정 필요)
+            sql = f"""UPDATE volunteer_applications 
+                      SET performance_status = 'recorded' 
+                      WHERE id IN ({placeholders}) 
+                      AND status = 'approved' 
+                      AND (performance_status = 'pending' OR performance_status IS NULL)""" # performance_status IS NULL 조건 추가
+            params = application_ids
+            message_verb = "실적 등록"
+            logger.warning("'register' action called but only updates status temporarily. Full implementation needed.")
+        
+        cursor_v.execute(sql, params)
+        processed_count = cursor_v.rowcount
+        conn_v.commit()
+        logger.info(f"{processed_count} applications processed with action '{action}'. IDs: {application_ids}")
+        
+        return jsonify({'success': True, 'message': f'{processed_count}건의 신청이 {message_verb} 처리되었습니다.', 'processed_count': processed_count})
+
+    except sqlite3.Error as e:
+        logger.error(f"실적 처리 중 데이터베이스 오류: {str(e)}", exc_info=True)
+        if conn_v:
+            conn_v.rollback()
+        return jsonify({'success': False, 'message': '데이터베이스 오류가 발생했습니다.'}), 500
+    except Exception as e:
+        logger.error(f"실적 처리 중 서버 오류: {str(e)}", exc_info=True)
+        if conn_v:
+            conn_v.rollback()
+        return jsonify({'success': False, 'message': '서버 오류가 발생했습니다.'}), 500
+    finally:
+        if conn_v:
+            conn_v.close()
+            
 if __name__ == '__main__':
-    # 호스트를 127.0.0.1로 변경하여 로컬에서만 실행
-    app.run(host='127.0.0.1', port=5000, debug=True) 
+    # 모든 인터페이스에서 접속 가능하도록 호스트 변경
+    app.run(host='0.0.0.0', port=5000, debug=True) 

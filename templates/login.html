@@ -109,6 +109,45 @@
             alert("로그인 중 오류가 발생했습니다.");
           }
         });
+
+      // 비밀번호 찾기 링크 클릭 처리
+      const forgotPasswordLink = document.getElementById("forgotPassword");
+      if (forgotPasswordLink) {
+        forgotPasswordLink.addEventListener("click", async (e) => {
+          e.preventDefault(); // 링크 기본 동작 방지
+
+          const email = prompt(
+            "비밀번호를 재설정할 이메일 주소를 입력해주세요:"
+          );
+
+          if (email) {
+            // 사용자가 이메일을 입력하고 확인을 누른 경우
+            try {
+              const response = await fetch("/api/reset-password-request", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ email: email }),
+              });
+
+              const data = await response.json();
+
+              // API 응답 메시지를 사용자에게 보여줌
+              alert(data.message);
+            } catch (error) {
+              console.error("비밀번호 재설정 요청 중 오류:", error);
+              alert("비밀번호 재설정 요청 중 오류가 발생했습니다.");
+            }
+          } else if (email === "") {
+            // 이메일을 입력하지 않고 확인을 누른 경우
+            alert("이메일 주소를 입력해야 합니다.");
+          } else {
+            // 사용자가 취소 버튼을 누른 경우
+            // 아무 작업도 하지 않음
+          }
+        });
+      }
     </script>
   </body>
 </html>

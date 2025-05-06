@@ -33,32 +33,29 @@
       <div class="sidebar">
         <h2>메뉴</h2>
         <ul>
-          {# 홈 - 모든 사용자에게 표시 #}
-          <li><a href="/main">홈</a></li>
-
-          {# 봉사 등록 - admin@test.com 이 아닌 승인된 관리자에게만 표시 (현재
-          페이지이므로 active) #} {% if current_user and current_user.is_admin
-          and current_user.email != 'admin@test.com' %}
-          <li><a href="/register-volunteer" class="active">봉사 등록</a></li>
-          {% endif %} {# 봉사 관리 - admin@test.com 이 아닌 승인된 관리자에게만
-          표시 #} {% if current_user and current_user.is_admin and
-          current_user.email != 'admin@test.com' %}
-          <li><a href="/manage-volunteers">봉사 관리</a></li>
-          {% endif %} {# 프로필 - 모든 사용자에게 표시 #}
-          <li><a href="/profile">프로필</a></li>
-
-          {# 관리자 인증 - admin@test.com 이 아닌 사용자에게만 표시 #} {% if
-          current_user and current_user.email != 'admin@test.com' %}
-          <li><a href="/admin-verification">관리자 인증</a></li>
-          {% endif %} {# 관리자 승인 - admin@test.com 사용자에게만 표시 #} {% if
-          current_user and current_user.email == 'admin@test.com' %}
-          <li><a href="/admin/approve-requests">관리자 승인</a></li>
+          {# --- 모든 사용자 공통 메뉴 --- #}
+          <li><a href="{{ url_for('main_page') }}" {% if page_type == 'main' %}class="active"{% endif %}>홈</a></li>
+          <li><a href="{{ url_for('profile_page') }}" {% if page_type == 'profile' %}class="active"{% endif %}>프로필</a></li>
+      
+          {# --- admin@test.com 전용 메뉴 --- #}
+          {% if current_user and current_user.email == 'admin@test.com' %}
+            <li><a href="{{ url_for('approve_requests_page') }}" {% if page_type == 'approve_requests' %}class="active"{% endif %}>관리자 승인</a></li>
+            <li><a href="{{ url_for('demand_stats_page') }}" {% if page_type == 'demand_stats' %}class="active"{% endif %}>수요처 실적 현황</a></li>
+          
+          {# --- 일반 사용자 (admin@test.com 제외 모든 사용자) 전용 메뉴 --- #}
+          {% else %}
+            <li><a href="{{ url_for('admin_verification') }}" {% if page_type == 'admin_verification' %}class="active"{% endif %}>관리자 인증</a></li>
+            <li><a href="{{ url_for('register_volunteer_page') }}" {% if page_type == 'register_volunteer' %}class="active"{% endif %}>봉사 등록</a></li>
+            <li><a href="{{ url_for('manage_volunteers_page') }}" {% if page_type == 'manage_volunteers' %}class="active"{% endif %}>봉사 관리</a></li>
+            <li><a href="{{ url_for('record_performance_page') }}" {% if page_type == 'record_performance' %}class="active"{% endif %}>실적 등록</a></li>
           {% endif %}
         </ul>
       </div>
 
       <!-- 메인 콘텐츠 영역 -->
       <div class="main-content">
+        {% if current_user and (current_user.is_admin or current_user.email ==
+        'admin@test.com') %}
         <div class="form-container">
           <h2>봉사 활동 등록</h2>
           <form
@@ -252,13 +249,27 @@
               <label>봉사 장소</label>
               <div
                 class="address-search-group"
-                style="display: flex; gap: 10px; align-items: center"
+                style="
+                  display: flex;
+                  gap: 10px;
+                  align-items: center;
+                  margin-bottom: 5px;
+                "
               >
+                <input
+                  type="text"
+                  id="postcode"
+                  name="postcode"
+                  placeholder="우편번호"
+                  readonly
+                  style="flex-basis: 20%"
+                />
                 <input
                   type="text"
                   id="address"
                   name="address"
                   placeholder="주소 검색"
+                  readonly
                   style="flex: 1"
                 />
                 <button
@@ -275,7 +286,6 @@
                 id="address_detail"
                 name="address_detail"
                 placeholder="상세 주소"
-                style="margin-top: 5px"
               />
               <!-- 카카오 지도 표시 영역 -->
               <div
@@ -289,7 +299,7 @@
               ></div>
               <!-- 카카오 지도 스크립트 -->
               <script src="//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
-              <script src="//dapi.kakao.com/v2/maps/sdk.js?appkey=YOUR_APP_KEY&libraries=services"></script>
+              <script src="//dapi.kakao.com/v2/maps/sdk.js?appkey=a54c9dcd86ef7bd033555bf98163008c&libraries=services&autoload=false"></script>
               <!-- TODO: YOUR_APP_KEY 교체 및 execDaumPostcode 함수 구현 필요 -->
             </div>
 
@@ -402,6 +412,19 @@
             </button>
           </form>
         </div>
+        {% else %}
+        <div class="permission-denied-message">
+          <h2>접근 권한 없음</h2>
+          <p>이 기능을 사용하려면 관리자 인증이 필요합니다.</p>
+          <p>
+            아직 관리자 인증을 신청하지 않으셨다면, 아래 버튼을 눌러 신청
+            페이지로 이동해주세요.
+          </p>
+          <a href="{{ url_for('admin_verification') }}" class="btn"
+            >관리자 인증 신청하기</a
+          >
+        </div>
+        {% endif %}
       </div>
     </div>
 
@@ -467,20 +490,67 @@
       }
       */
 
-      // 카카오 주소 검색 API 함수
+      // --- 카카오 지도 관련 코드 시작 --- //
+      // 지도 관련 변수들을 전역 또는 접근 가능한 스코프에 선언
+      var mapContainer, mapOption, map, geocoder, marker;
+
+      // kakao.maps.load 를 사용하여 SDK 로드 완료 후 지도 초기화
+      kakao.maps.load(function () {
+        mapContainer = document.getElementById("map");
+        if (!mapContainer) {
+          console.error("지도 컨테이너(id=map)를 찾을 수 없습니다.");
+          return;
+        }
+        mapOption = {
+          center: new kakao.maps.LatLng(37.566826, 126.9786567),
+          level: 3,
+        };
+
+        map = new kakao.maps.Map(mapContainer, mapOption);
+        geocoder = new kakao.maps.services.Geocoder();
+        marker = new kakao.maps.Marker({
+          position: map.getCenter(),
+          map: map,
+        });
+        marker.setMap(null); // 초기 마커 숨김
+        console.log("카카오 지도 초기화 완료."); // 초기화 완료 로그
+      });
+
+      // 카카오 주소 검색 API 함수 (내부 로직은 거의 동일)
       function execDaumPostcode() {
         new daum.Postcode({
           oncomplete: function (data) {
-            // 주소 처리 로직 (입력 필드 채우기, 지도 표시 등)
-            console.log(data);
-            document.getElementById("address").value = data.address;
-            document.getElementById("map").style.display = "block";
-            // TODO: 지도 표시 및 좌표 저장 로직 추가
+            // ... (주소, 우편번호 채우는 코드 유지) ...
+            document.getElementById("postcode").value = data.zonecode;
+            document.getElementById("address").value = data.address; // 도로명 또는 지번 주소
+            document.getElementById("address_detail").focus();
+
+            // 지도 관련 객체가 초기화되었는지 확인 후 사용
+            if (map && mapContainer && geocoder && marker) {
+              mapContainer.style.display = "block";
+              map.relayout();
+
+              geocoder.addressSearch(data.address, function (result, status) {
+                if (status === kakao.maps.services.Status.OK) {
+                  var coords = new kakao.maps.LatLng(result[0].y, result[0].x);
+                  marker.setPosition(coords);
+                  marker.setMap(map);
+                  map.setCenter(coords);
+                } else {
+                  console.warn("주소 좌표 변환 실패:", status);
+                  marker.setMap(null);
+                }
+              });
+            } else {
+              console.error("지도 객체가 아직 준비되지 않았습니다.");
+              // 필요시 사용자에게 알림
+            }
           },
         }).open();
       }
+      // --- 카카오 지도 관련 코드 끝 --- //
 
-      // 폼 제출 처리 수정
+      // 폼 제출 처리 함수
       function setupFormSubmit() {
         const registerForm = document.getElementById("registerVolunteerForm");
         if (registerForm) {
@@ -548,10 +618,11 @@
 
       // 페이지 로드 시 실행
       document.addEventListener("DOMContentLoaded", () => {
-        loadUserInfo(); // fillRegistrationOrg 호출 제거
+        loadUserInfo();
         setupLogout();
         setupFormSubmit();
         setupAttachmentLink();
+        // kakao.maps.load()는 비동기이므로 여기서 지도 초기화를 기다릴 필요 없음
       });
     </script>
   </body>
