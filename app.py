@@ -312,7 +312,7 @@ def admin_verification():
         if conn:
             conn.close()
             
-    return render_template('admin_verification.html', verification=verification, current_user=current_user, page_type='admin_verification')
+    return render_template('admin_verification.html', verification=verification, current_user=current_user, user=current_user, page_type='admin_verification')
 
 @app.route('/api/logout', methods=['POST'])
 def logout():
@@ -1645,114 +1645,139 @@ def change_password():
         if conn:
             conn.close()
 
+def extract_location_parts(address):
+    """
+    주소 문자열에서 시/도(level1)와 구/군(level2)을 추출합니다.
+    예: '서울특별시 강남구' -> ('서울특별시', '강남구')
+    """
+    if not address:
+        return None, None
+        
+    parts = address.split()
+    if len(parts) >= 2:
+        return parts[0], parts[1]
+    return None, None
+
 @app.route('/admin/demand-stats')
 @login_required
 @admin_required
 def demand_stats_page():
     current_user = get_user_from_session()
-    if not current_user or current_user['email'] != 'admin@test.com':
-        flash("이 페이지에 접근할 권한이 없습니다.", "warning")
-        return redirect(url_for('main_page'))
+    if not current_user:
+        flash("사용자 정보를 불러올 수 없습니다. 다시 로그인 해주세요.", "error")
+        return redirect(url_for('login_page'))
 
-    search_params = {
-        'location_level1': request.args.get('location_level1'),
-        'location_level2': request.args.get('location_level2'),
-        'start_date': request.args.get('start_date'),
-        'end_date': request.args.get('end_date'),
-        'status': request.args.get('status'),
-        'org_name': request.args.get('org_name')
-    }
-    logger.debug(f"Demand stats search params: {search_params}")
-
-    stats_data = []
-    locations_structured = defaultdict(lambda: defaultdict(list)) # try 블록 내에서 사용되므로 여기서 초기화
-    institution_details = {} # try 블록 내에서 사용되므로 여기서 초기화
-    locations_for_filter = {}  # try 블록 전에 초기화
+    # 필터 파라미터 가져오기 (HTML 폼 name과 일치시킴)
+    region_filter = request.args.get('location_level1', '전체')
+    district_filter = request.args.get('location_level2', '전체')
+    status_filter = request.args.get('status', '전체')
+    affiliated_center_filter = request.args.get('affiliated_center', '')
+    org_name_filter = request.args.get('org_name', '')
+    start_date = request.args.get('start_date', '')
+    end_date = request.args.get('end_date', '')
     
-    filter_options = { # 기본값 설정
-        'locations_structured': {},
-        'statuses': {'all': '전체', 'pending': '대기', 'approved': '승인', 'rejected': '반려'}
+    # 지역별 시/군/구 데이터
+    regions = {
+        '서울특별시': ['강남구', '강동구', '강북구', '강서구', '관악구', '광진구', '구로구', '금천구', '노원구', '도봉구', '동대문구', '동작구', '마포구', '서대문구', '서초구', '성동구', '성북구', '송파구', '양천구', '영등포구', '용산구', '은평구', '종로구', '중구', '중랑구'],
+        '경기도': ['수원시', '성남시', '의정부시', '안양시', '부천시', '광명시', '평택시', '동두천시', '안산시', '고양시', '과천시', '구리시', '남양주시', '오산시', '시흥시', '군포시', '의왕시', '하남시', '용인시', '파주시', '이천시', '안성시', '김포시', '화성시', '광주시', '양주시', '포천시', '여주시', '연천군', '가평군', '양평군'],
+        '인천광역시': ['중구', '동구', '미추홀구', '연수구', '남동구', '부평구', '계양구', '서구', '강화군', '옹진군'],
+        '부산광역시': ['중구', '서구', '동구', '영도구', '부산진구', '동래구', '남구', '북구', '해운대구', '사하구', '금정구', '강서구', '연제구', '수영구', '사상구', '기장군']
     }
-    conn_users = None
-    conn_volunteer = None
+    
+    # 더미 데이터 생성 (100개)
+    affiliated_centers = ['A센터', 'B센터', 'C센터', 'D센터']
+    approved_centers = ['X센터', 'Y센터', 'Z센터']
+    dummy_data = []
+    for region, districts in regions.items():
+        for _ in range(100):  # 각 지역별 100개씩
+            district = random.choice(districts)
+            status = random.choice(['승인', '반려', '대기'])
+            affiliated_center = random.choice(affiliated_centers)
+            approved_center = random.choice(approved_centers)
+            org_name = f"{region} {district} 기관{random.randint(1, 100)}"
+            date = (datetime(2025, 4, 1) + timedelta(days=random.randint(0, 40))).strftime('%Y-%m-%d')
+            dummy_data.append({
+                'region': region,
+                'district': district,
+                'status': status,
+                'affiliated_center': affiliated_center,
+                'approved_center': approved_center,
+                'org_name': org_name,
+                'date': date,
+                'participants': random.randint(1, 100),
+                'hours': random.randint(1, 200),
+                'total_hours': random.randint(1, 20000),
+                'total_participants': random.randint(1, 1000),
+                'total_orgs': random.randint(1, 100)
+            })
+    
+    # 필터링 적용
+    filtered_data = dummy_data
+    
+    # 시/도 필터링
+    if region_filter and region_filter != '전체':
+        filtered_data = [d for d in filtered_data if d['region'] == region_filter]
+    
+    # 시/군/구 필터링
+    if district_filter and district_filter != '전체':
+        filtered_data = [d for d in filtered_data if d['district'] == district_filter]
+    
+    # 상태 필터링
+    if status_filter and status_filter != '전체':
+        filtered_data = [d for d in filtered_data if d['status'] == status_filter]
+    
+    # 기관명 검색
+    if org_name_filter:
+        filtered_data = [d for d in filtered_data if org_name_filter.lower() in d['org_name'].lower()]
+    
+    # 날짜 필터링
+    if start_date and end_date:
+        filtered_data = [d for d in filtered_data if start_date <= d['date'] <= end_date]
+    
+    # 소속센터 필터링
+    if affiliated_center_filter:
+        filtered_data = [d for d in filtered_data if affiliated_center_filter in d['affiliated_center']]
+    
+    # 필터링된 데이터를 stats_data에 할당
+    stats_data = filtered_data
+    
+    # 필터 옵션 딕셔너리 생성
+    filter_options = {
+        'locations_structured': regions,
+        'statuses': {
+            '전체': '전체',
+            '승인': '승인',
+            '반려': '반려',
+            '대기': '대기'
+        }
+    }
 
-    try:
-        conn_users = sqlite3.connect(USERS_DB_PATH)
-        conn_users.row_factory = sqlite3.Row
-        cursor_users = conn_users.cursor()
-        
-        query_institutions = "SELECT id, organization, address, status FROM admin_verifications WHERE address IS NOT NULL"
-        params_institutions = []
-        
-        if search_params['status'] and search_params['status'] != 'all':
-            query_institutions += " AND status = ?"
-            params_institutions.append(search_params['status'])
-        if search_params['org_name']:
-            query_institutions += " AND organization LIKE ?"
-            params_institutions.append(f"%{search_params['org_name']}%" )
-
-        cursor_users.execute(query_institutions, tuple(params_institutions))
-        all_institutions = cursor_users.fetchall()
-
-        for inst in all_institutions:
-            level1, level2 = extract_location_parts(inst['address'])
-            if search_params['location_level1'] and level1 != search_params['location_level1']:
-                continue
-            if search_params['location_level2'] and level2 != search_params['location_level2']:
-                continue
-            if level1 and level2:
-                if level2 not in locations_structured[level1]:
-                     locations_structured[level1][level2] = []
-                locations_structured[level1][level2].append(inst['id'])
-                institution_details[inst['id']] = {'name': inst['organization'], 'address': inst['address'], 'status': inst['status']}
-        
-        # locations_structured 가 채워진 후에 locations_for_filter 정의
-        locations_for_filter = {k: sorted(list(v.keys())) for k, v in locations_structured.items()}
-        
-        filtered_institution_ids = list(institution_details.keys())
-
-        if not filtered_institution_ids:
-             logger.debug("No institutions match the filter criteria.")
-        else:
-            conn_volunteer = sqlite3.connect(VOLUNTEER_DB_PATH)
-            conn_volunteer.row_factory = sqlite3.Row
-            cursor_volunteer = conn_volunteer.cursor()
-            
-            # ... (이하 통계 계산 로직은 이전과 동일하게 가정) ...
-            # ... (inst_to_user_map, filtered_user_ids, query_volunteers, volunteer_activities 등) ...
-            # ... (institution_stats, applications_by_institution, stats_data.append(...) 등) ...
-            # 이 부분은 생략되었지만 실제 코드에는 포함되어야 합니다.
-            # 예시 더미 데이터 (실제 구현 시 제거)
-            if not any(search_params.values()):
-                pass # 검색 조건 없으면 더미 데이터 표시 안 함
-            else:
-                if not stats_data: # 실제 데이터가 없는 경우에만 더미 추가
-                    stats_data = [
-                        {'center_name': '서울특별시 강남구', 'org_name': '행복 복지관', 'status_display': '승인', 'total_participants': 50, 'unique_participants': 30, 'total_hours_display': '120시간 30분', 'activity_count': 5},
-                        {'center_name': '경기도 수원시', 'org_name': '희망 나눔 센터', 'status_display': '승인', 'total_participants': 80, 'unique_participants': 55, 'total_hours_display': '200시간 0분', 'activity_count': 8},
-                    ]
-
-        # try 블록 성공 시 최종 filter_options 업데이트 (중요!)
-        filter_options['locations_structured'] = locations_for_filter
-        
-    except sqlite3.Error as e:
-        logger.error(f"수요처 통계 조회 중 DB 오류: {str(e)}", exc_info=True)
-        flash("데이터 조회 중 DB 오류가 발생했습니다.", "error")
-    except Exception as e:
-        logger.error(f"수요처 통계 조회 중 서버 오류: {str(e)}", exc_info=True)
-        flash("데이터 조회 중 서버 오류가 발생했습니다.", "error")
-    finally:
-        if conn_users:
-            conn_users.close()
-        if conn_volunteer:
-            conn_volunteer.close()
-
-    return render_template('demand_center_stats.html',
-                           current_user=current_user,
-                           search_params=search_params,
-                           stats_data=stats_data,
-                           filter_options=filter_options,
-                           page_type='demand_stats')
+    # search_params 딕셔너리 생성 (템플릿에서 사용)
+    search_params = {
+        'location_level1': region_filter,
+        'location_level2': district_filter,
+        'status': status_filter,
+        'org_name': org_name_filter,
+        'start_date': start_date,
+        'end_date': end_date,
+        'affiliated_center': affiliated_center_filter
+    }
+    
+    print(f"stats_data count: {len(stats_data)}")  # 디버깅용 출력
+    
+    return render_template('demand_center_stats.html', 
+                         current_user=current_user,
+                         stats_data=stats_data,
+                         regions=regions,
+                         filter_options=filter_options,
+                         search_params=search_params,
+                         selected_region=region_filter,
+                         selected_district=district_filter,
+                         selected_status=status_filter,
+                         org_name_filter=org_name_filter,
+                         start_date=start_date,
+                         end_date=end_date,
+                         page_type='demand_stats')
 
 @app.route('/admin/record-performance') # URL은 유지하되, 접근 권한 변경
 @login_required # 로그인된 사용자만 접근 가능

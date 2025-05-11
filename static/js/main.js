@@ -159,7 +159,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     try {
       const response = await fetch(
-        `${API_BASE_URL}/api/volunteers?sort=activity_period_start&order=asc`
+        `${API_BASE_URL}/api/volunteers?sort=activity_period_start&order=desc`
       );
       const data = await response.json();
 

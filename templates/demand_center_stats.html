@@ -43,16 +43,28 @@
             width: 100%;
             border-collapse: collapse;
             margin-top: 20px;
+            /* table-layout: auto; */
         }
         .results-table th, .results-table td {
             border: 1px solid #ddd;
             padding: 10px;
             text-align: center;
             font-size: 0.9em;
+            min-width: 110px;
+        }
+        .results-table th.center-col, .results-table td.center-col {
+            min-width: 130px;
+        }
+        .results-table th.demand-col, .results-table td.demand-col {
+            min-width: 180px;
         }
         .results-table th {
             background-color: #f2f2f2;
         }
+        /* .main-content {
+            max-width: 1400px;
+            margin: 0 auto;
+        } */
     </style>
 </head>
 <body>
@@ -100,7 +112,7 @@
                     <label for="location_level1">시/도</label>
                     <select id="location_level1" name="location_level1">
                         <option value="">전체</option>
-                        {% for loc1 in filter_options.locations_structured.keys()|sort %}
+                        {% for loc1 in filter_options.locations_structured %}
                         <option value="{{ loc1 }}" {% if search_params.location_level1 == loc1 %}selected{% endif %}>{{ loc1 }}</option>
                         {% endfor %}
                     </select>
@@ -132,10 +144,10 @@
                         {% endfor %}
                     </select>
                 </div>
-                {# 수요처명 #}
+                {# 소속센터 검색 #}
                 <div class="form-group">
-                    <label for="org_name">수요처명</label>
-                    <input type="text" id="org_name" name="org_name" placeholder="수요처명 입력" value="{{ search_params.org_name or '' }}">
+                    <label for="affiliated_center">소속센터</label>
+                    <input type="text" id="affiliated_center" name="affiliated_center" placeholder="소속센터 입력" value="{{ search_params.affiliated_center or '' }}">
                 </div>
                 <button type="submit">검색</button>
             </form>
@@ -145,31 +157,32 @@
                 <thead>
                     <tr>
                         <th>순번</th>
-                        <th>소속센터</th> {# TODO: 이 필드 정의 필요 #}
-                        <th>수요처</th>
+                        <th class="center-col">소속센터</th>
+                        <th class="demand-col">수요처</th>
                         <th>승인상태</th>
                         <th>연인원</th>
                         <th>실인원</th>
-                        <th>총 봉사시간(시간,분)</th> {# TODO: 시간/분 표시 형식 정의 필요 #}
+                        <th>총 봉사시간(시간,분)</th>
                         <th>등록 일감수</th>
+                        <th>등록날짜</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {# TODO: stats_data 로 반복문 돌며 행 생성 #}
                     {% for stat in stats_data %}
                     <tr>
                         <td>{{ loop.index }}</td>
-                        <td>{{ stat.center_name or '-' }}</td> {# 예시 #}
-                        <td>{{ stat.org_name or '-' }}</td> {# 예시 #}
-                        <td>{{ stat.status_display or '-' }}</td> {# 예시 #}
-                        <td>{{ stat.total_participants or 0 }}</td> {# 예시 #}
-                        <td>{{ stat.unique_participants or 0 }}</td> {# 예시 #}
-                        <td>{{ stat.total_hours_display or '0시간 0분' }}</td> {# 예시 #}
-                        <td>{{ stat.activity_count or 0 }}</td> {# 예시 #}
+                        <td class="center-col">{{ stat.affiliated_center or '-' }}</td>
+                        <td class="demand-col">{{ stat.org_name or '-' }}</td>
+                        <td>{{ stat.status or '-' }}</td>
+                        <td>{{ stat.total_participants or 0 }}</td>
+                        <td>{{ stat.unique_participants or 0 }}</td>
+                        <td>{{ stat.total_hours or 0 }}시간 0분</td>
+                        <td>{{ stat.activity_count or 0 }}</td>
+                        <td>{{ stat.date or '-' }}</td>
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="8">검색 결과가 없습니다.</td> {# 컬럼 수에 맞게 colspan 조정 #}
+                        <td colspan="9">검색 결과가 없습니다.</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -178,8 +191,11 @@
     </div>
 
     {# 로그아웃 및 위치 필터 JS #}
+    <script id="locations-json" type="application/json">
+        {{ filter_options.locations_structured | tojson | safe }}
+    </script>
     <script>
-        const API_BASE_URL = ""; 
+        const API_BASE_URL = "";
 
         // 로그아웃 처리 함수
         function setupLogout() {
@@ -200,50 +216,31 @@
                 });
             }
         }
-        
-        // 위치 데이터 (백엔드에서 전달)
-        const locationsData = {{ filter_options.locations_structured | default({}) | tojson }};
-        const selectedLevel1 = "{{ search_params.location_level1 or '' }}";
-        const selectedLevel2 = "{{ search_params.location_level2 or '' }}";
 
-        // 시/군/구 드롭다운 업데이트 함수
-        function updateLevel2Options() {
-            const level1Select = document.getElementById('location_level1');
-            const level2Select = document.getElementById('location_level2');
-            const currentLevel1 = level1Select.value;
+        // 위치 데이터 안전하게 할당
+        var locationsData = JSON.parse(document.getElementById('locations-json').textContent);
+        const locationLevel1 = document.getElementById('location_level1');
+        const locationLevel2 = document.getElementById('location_level2');
 
-            // 기존 옵션 제거 (첫번째 "전체" 옵션 제외)
-            while (level2Select.options.length > 1) {
-                level2Select.remove(1);
-            }
-
-            if (currentLevel1 && locationsData[currentLevel1]) {
-                locationsData[currentLevel1].forEach(loc2 => {
+        function updateLocationLevel2() {
+            const selectedLevel1 = locationLevel1.value;
+            locationLevel2.innerHTML = '<option value="">전체</option>';
+            if (selectedLevel1 && locationsData[selectedLevel1]) {
+                locationsData[selectedLevel1].forEach(level2 => {
                     const option = document.createElement('option');
-                    option.value = loc2;
-                    option.text = loc2;
-                    // 페이지 로드 시 또는 이전 검색값과 일치하면 선택됨으로 표시
-                    if (loc2 === selectedLevel2 && currentLevel1 === selectedLevel1) {
-                        option.selected = true;
-                    }
-                    level2Select.add(option);
+                    option.value = level2;
+                    option.textContent = level2;
+                    locationLevel2.appendChild(option);
                 });
             }
         }
 
-        // 이벤트 리스너 설정
-        document.addEventListener("DOMContentLoaded", () => {
-            setupLogout();
-            
-            const level1Select = document.getElementById('location_level1');
-            if (level1Select) {
-                // 페이지 로드 시 초기 업데이트 (이전 검색값 복원 목적)
-                updateLevel2Options(); 
-                
-                // 시/도 선택 변경 시 업데이트
-                level1Select.addEventListener('change', updateLevel2Options);
-            }
-        });
+        if (locationLevel1 && locationLevel2) {
+            locationLevel1.addEventListener('change', updateLocationLevel2);
+            updateLocationLevel2();
+        }
+
+        document.addEventListener('DOMContentLoaded', setupLogout);
     </script>
 </body>
 </html> 

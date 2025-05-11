@@ -1,0 +1,3 @@
+(25, 1, 1, '임시 관리자', 'admin@test.com', '2024-08-15', '2025-05-11 18:31:33', 'pending', None, 'pending', None)
+(26, 2, 1, '테스터1', 'tester1@test.com', '2024-08-15', '2025-05-11 18:31:33', 'pending', None, 'pending', None)
+(27, 3, 1, '테스터2', 'tester2@test.com', '2024-08-15', '2025-05-11 18:31:33', 'pending', None, 'pending', None)

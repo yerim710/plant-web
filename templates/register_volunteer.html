@@ -299,7 +299,7 @@
               ></div>
               <!-- 카카오 지도 스크립트 -->
               <script src="//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
-              <script src="//dapi.kakao.com/v2/maps/sdk.js?appkey=a54c9dcd86ef7bd033555bf98163008c&libraries=services&autoload=false"></script>
+              <script src="//dapi.kakao.com/v2/maps/sdk.js?appkey=a54c9dcd86ef7bd033555bf98163008c&libraries=services" id="kakaoMapScript"></script>
               <!-- TODO: YOUR_APP_KEY 교체 및 execDaumPostcode 함수 구현 필요 -->
             </div>
 
@@ -491,30 +491,26 @@
       */
 
       // --- 카카오 지도 관련 코드 시작 --- //
-      // 지도 관련 변수들을 전역 또는 접근 가능한 스코프에 선언
-      var mapContainer, mapOption, map, geocoder, marker;
-
-      // kakao.maps.load 를 사용하여 SDK 로드 완료 후 지도 초기화
-      kakao.maps.load(function () {
-        mapContainer = document.getElementById("map");
-        if (!mapContainer) {
-          console.error("지도 컨테이너(id=map)를 찾을 수 없습니다.");
-          return;
+      function initializeKakaoMap() {
+        var mapContainer = document.getElementById("map");
+        if (typeof kakao !== "undefined" && kakao.maps && mapContainer) {
+          var mapOption = {
+            center: new kakao.maps.LatLng(37.566826, 126.9786567),
+            level: 3,
+          };
+          var map = new kakao.maps.Map(mapContainer, mapOption);
+          var geocoder = new kakao.maps.services.Geocoder();
+          var marker = new kakao.maps.Marker({
+            position: map.getCenter(),
+            map: map,
+          });
+          marker.setMap(null);
+          console.log("카카오 지도 초기화 완료.");
+        } else {
+          console.error("kakao 객체가 아직 준비되지 않았습니다.");
         }
-        mapOption = {
-          center: new kakao.maps.LatLng(37.566826, 126.9786567),
-          level: 3,
-        };
-
-        map = new kakao.maps.Map(mapContainer, mapOption);
-        geocoder = new kakao.maps.services.Geocoder();
-        marker = new kakao.maps.Marker({
-          position: map.getCenter(),
-          map: map,
-        });
-        marker.setMap(null); // 초기 마커 숨김
-        console.log("카카오 지도 초기화 완료."); // 초기화 완료 로그
-      });
+      }
+      document.getElementById('kakaoMapScript').onload = initializeKakaoMap;
 
       // 카카오 주소 검색 API 함수 (내부 로직은 거의 동일)
       function execDaumPostcode() {
@@ -524,6 +520,9 @@
             document.getElementById("postcode").value = data.zonecode;
             document.getElementById("address").value = data.address; // 도로명 또는 지번 주소
             document.getElementById("address_detail").focus();
+
+            // mapContainer를 항상 새로 할당하여 ReferenceError 방지
+            mapContainer = document.getElementById("map");
 
             // 지도 관련 객체가 초기화되었는지 확인 후 사용
             if (map && mapContainer && geocoder && marker) {
@@ -580,7 +579,7 @@
               );
               const result = await response.json();
               if (result.success) {
-                alert("봉사 활동이 성공적으로 등록되었습니다.");
+                alert("등록이 완료되었습니다!");
                 window.location.href = "/main";
               } else {
                 alert(result.message || "봉사 등록에 실패했습니다.");

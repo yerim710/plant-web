@@ -15,7 +15,15 @@
         background-color: #fff;
         border-radius: 8px;
         box-shadow: 0 2px 15px rgba(0, 0, 0, 0.1);
-        margin-top: 20px; /* main-content 내부에서 적절한 여백 */
+        margin-top: 20px;
+        min-height: 180px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        max-width: 1400px;
+        margin-left: auto;
+        margin-right: auto;
       }
       .approve-requests-container h1 {
         text-align: center;
@@ -24,15 +32,18 @@
       }
       .requests-table {
         width: 100%;
+        min-width: 1100px;
         border-collapse: collapse;
         margin-top: 20px;
+        font-size: 1.05em;
       }
       .requests-table th,
       .requests-table td {
         border: 1px solid #ddd;
-        padding: 12px;
+        padding: 18px 16px;
         text-align: left;
-        font-size: 14px;
+        font-size: 1.05em;
+        height: 48px;
       }
       .requests-table th {
         background-color: #f8f9fa;
@@ -111,9 +122,9 @@
       <!-- 실제 구현 시에는 base.html 상속 등을 통해 중복 제거 권장 -->
       <div class="user-info-container">
         <div class="user-info">
-          <span id="userName">{{ session.get('user_name', '사용자') }}</span>
+          <span id="userName">{{ current_user.name if current_user else '' }}</span>
           <!-- 세션에서 직접 가져오거나 JS로 로드 -->
-          <span id="userEmail">{{ session.get('user_email', '-') }}</span>
+          <span id="userEmail">{{ current_user.email if current_user else '' }}</span>
           <button id="logoutBtn" class="logout-btn">로그아웃</button>
         </div>
       </div>
@@ -150,7 +161,7 @@
           {% endfor %}
         </div>
         {% endif %} {% endwith %} {# 대기 중인 요청 테이블 #}
-        <h3>대기 중인 요청</h3>
+        <h3>대기 중인 요청 <span style="font-size:0.9em; color:#2196f3;">({{ pending_requests|length }})</span></h3>
         <div class="approve-requests-container">
           <!-- 엑셀 다운로드 버튼 추가 -->
           <div class="action-buttons">
