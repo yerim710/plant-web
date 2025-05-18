@@ -1,3 +1,11 @@
+// TODO: 이 코드는 나중에 Flask 서버로 마이그레이션될 예정입니다.
+// Flask로 전환 시 다음 패키지들이 필요합니다:
+// - flask
+// - flask-mail
+// - flask-cors
+// - flask-session
+// - python-dotenv
+
 const express = require("express");
 const nodemailer = require("nodemailer");
 const cors = require("cors");

@@ -168,3 +168,7 @@ document.addEventListener("DOMContentLoaded", () => {
     return emailRegex.test(email);
   }
 });
+
+// Node.js 프로젝트 설정 파일
+// 이 파일은 Node.js 프로젝트의 의존성 및 스크립트를 관리합니다.
+// 나중에 다른 서버로 변경할 예정입니다.

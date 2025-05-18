@@ -1,28 +1,48 @@
 import sqlite3
-from datetime import datetime
+import random
+from datetime import datetime, timedelta
 
+# 데이터베이스 연결
 conn = sqlite3.connect('volunteer.db')
-c = conn.cursor()
+cursor = conn.cursor()
 
-# 1. 기존 데이터 삭제
-c.execute('DELETE FROM volunteer_applications')
+# 더미 데이터 생성
+def generate_dummy_applications(num_applications=10):
+    # 봉사활동 ID 목록 가져오기
+    cursor.execute("SELECT id FROM volunteers")
+    volunteer_ids = [row[0] for row in cursor.fetchall()]
+    
+    # 상태 옵션 - 모두 pending으로 설정
+    status = 'pending'
+    performance_status = 'pending'
+    
+    # 더미 데이터 생성
+    for i in range(num_applications):
+        volunteer_id = random.choice(volunteer_ids)
+        user_id = random.randint(1, 10)  # 사용자 ID는 1-10 사이
+        applicant_name = f"신청자{i+1}"
+        applicant_email = f"applicant{i+1}@example.com"
+        
+        # 봉사 날짜 (현재로부터 1-30일 사이)
+        volunteer_date = (datetime.now() + timedelta(days=random.randint(1, 30))).strftime('%Y-%m-%d')
+        
+        # 데이터 삽입
+        cursor.execute("""
+            INSERT INTO volunteer_applications 
+            (user_id, volunteer_id, applicant_name, applicant_email, volunteer_date, 
+             status, rejection_reason, performance_status, performance_rejection_reason)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (user_id, volunteer_id, applicant_name, applicant_email, volunteer_date,
+              status, None, performance_status, None))
 
-# 2. 임시 데이터 삽입
-now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-dummy_data = [
-    (1, 4, '임시 관리자', 'admin@test.com', '2024-08-15', now, 'pending'),
-    (2, 4, '테스터1', 'tester1@test.com', '2024-08-15', now, 'pending'),
-    (3, 5, '테스터2', 'tester2@test.com', '2024-08-15', now, 'pending'),
-    (4, 5, '테스터3', 'tester3@test.com', '2024-08-16', now, 'pending'),
-    (5, 8, '테스터4', 'tester4@test.com', '2024-08-17', now, 'pending'),
-]
-for user_id, volunteer_id, name, email, vdate, appdate, status in dummy_data:
-    c.execute('''
-        INSERT INTO volunteer_applications (
-            user_id, volunteer_id, applicant_name, applicant_email, volunteer_date, application_date, status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
-    ''', (user_id, volunteer_id, name, email, vdate, appdate, status))
+# 기존 데이터 삭제
+cursor.execute('DELETE FROM volunteer_applications')
 
+# 더미 데이터 삽입 실행
+generate_dummy_applications()
+
+# 변경사항 저장 및 연결 종료
 conn.commit()
 conn.close()
-print('임시 데이터 삭제 및 5건 삽입 완료') 
+
+print("더미 데이터가 성공적으로 추가되었습니다. (10개의 대기 상태 신청)") 
