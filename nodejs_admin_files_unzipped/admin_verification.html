@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>관리자 인증</title>
+    <!-- <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/main.css') }}"
+    /> -->
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/style.css') }}"
+    />
+  </head>
+  <body class="admin-verification-page">
+    <div class="main-container">
+      <div class="user-info-container">
+        <div class="user-info">
+          <span id="userName"></span>
+          <span id="userEmail"></span>
+          <!-- <span id="adminStatus"></span> -->
+          <button id="logoutBtn" class="logout-btn">로그아웃</button>
+        </div>
+      </div>
+
+      <div class="sidebar">
+        <h2>메뉴</h2>
+        <ul>
+          {# --- 모든 사용자 공통 메뉴 --- #}
+          <li><a href="{{ url_for('main_page') }}" {% if page_type == 'main' %}class="active"{% endif %}>홈</a></li>
+          <li><a href="{{ url_for('profile_page') }}" {% if page_type == 'profile' %}class="active"{% endif %}>프로필</a></li>
+      
+          {# --- admin@test.com 전용 메뉴 --- #}
+          {% if current_user and current_user.email == 'admin@test.com' %}
+            <li><a href="{{ url_for('approve_requests_page') }}" {% if page_type == 'approve_requests' %}class="active"{% endif %}>관리자 승인</a></li>
+            <li><a href="{{ url_for('demand_stats_page') }}" {% if page_type == 'demand_stats' %}class="active"{% endif %}>수요처 실적 현황</a></li>
+          
+          {# --- 일반 사용자 (admin@test.com 제외 모든 사용자) 전용 메뉴 --- #}
+          {% else %}
+            <li><a href="{{ url_for('admin_verification') }}" {% if page_type == 'admin_verification' %}class="active"{% endif %}>관리자 인증</a></li>
+            <li><a href="{{ url_for('register_volunteer_page') }}" {% if page_type == 'register_volunteer' %}class="active"{% endif %}>봉사 등록</a></li>
+            <li><a href="{{ url_for('manage_volunteers_page') }}" {% if page_type == 'manage_volunteers' %}class="active"{% endif %}>봉사 관리</a></li>
+            <li><a href="{{ url_for('record_performance_page') }}" {% if page_type == 'record_performance' %}class="active"{% endif %}>실적 등록</a></li>
+          {% endif %}
+        </ul>
+      </div>
+
+      <div class="main-content">
+        <div class="admin-verification-container">
+          <h2>관리자 인증 신청</h2>
+          <div class="current-user-info">
+            <h3>현재 사용자 정보</h3>
+            <p>이름: <span id="currentUserName"></span></p>
+            <p>이메일: <span id="currentUserEmail"></span></p>
+          </div>
+
+          <form id="adminVerificationForm">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="organization">기관명</label>
+                <input
+                  type="text"
+                  id="organization"
+                  name="organization"
+                  required
+                />
+              </div>
+              <div class="form-group">
+                <label for="businessNumber">사업자 등록 번호</label>
+                <input
+                  type="text"
+                  id="businessNumber"
+                  name="businessNumber"
+                  required
+                />
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="representative">대표자명</label>
+                <input
+                  type="text"
+                  id="representative"
+                  name="representative"
+                  required
+                />
+              </div>
+              <div class="form-group">
+                <label for="officePhone">사무실 전화번호</label>
+                <input
+                  type="text"
+                  id="officePhone"
+                  name="officePhone"
+                  required
+                />
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group" style="flex-basis: 100%">
+                <label>주소</label>
+                <div style="display: flex; gap: 10px; margin-bottom: 5px">
+                  <input
+                    type="text"
+                    id="postcode"
+                    name="postcode"
+                    placeholder="우편번호"
+                    readonly
+                    style="flex-basis: 20%"
+                  />
+                  <button
+                    type="button"
+                    class="btn"
+                    onclick="execDaumPostcodeAdmin()"
+                    style="flex-basis: auto; width: auto; padding: 8px 15px"
+                  >
+                    주소 검색
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  id="address"
+                  name="address"
+                  placeholder="주소"
+                  readonly
+                  style="margin-bottom: 5px"
+                />
+                <input
+                  type="text"
+                  id="address_detail"
+                  name="address_detail"
+                  placeholder="상세주소"
+                />
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="managerPhone">담당자 연락처</label>
+                <input
+                  type="text"
+                  id="managerPhone"
+                  name="managerPhone"
+                  required
+                />
+              </div>
+              <div class="form-group"></div>
+            </div>
+
+            <button type="submit" class="btn">인증 신청</button>
+          </form>
+
+          <!-- 승인 처리 현황 섹션 -->
+          <div
+            class="status-container"
+            style="
+              margin-top: 30px;
+              border-top: 1px solid #eee;
+              padding-top: 30px;
+            "
+          >
+            <h3>승인 처리 현황</h3>
+            {% if verification %}
+            <!-- 현황 정보를 한 줄에 표시하기 위한 flex 컨테이너 -->
+            <div
+              class="status-details"
+              style="
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                flex-wrap: wrap;
+                margin-bottom: 15px;
+              "
+            >
+              <span>
+                <strong>상태:</strong>
+                <span
+                  class="status-value {% if verification.status == 'pending' %}status-pending {% elif verification.status == 'approved' %}status-approved {% elif verification.status == 'rejected' %}status-rejected {% endif %}"
+                >
+                  {% if verification.status %} {{ verification.status |
+                  replace('pending', '승인 대기') | replace('approved', '승인
+                  완료') | replace('rejected', '반려') }} {% else %} - {% endif
+                  %}
+                </span>
+              </span>
+              <span>|</span>
+              <span>
+                <strong>신청자:</strong>
+                <span class="status-value">
+                  {{ user.name if user else '-' }}
+                </span>
+              </span>
+              <span>|</span>
+              <span>
+                <strong>이메일:</strong>
+                <span class="status-value">
+                  {{ user.email if user else '-' }}
+                </span>
+              </span>
+              <span>|</span>
+              <span>
+                <strong>기관명:</strong>
+                <span class="status-value">
+                  {{ verification.organization if verification.organization else
+                  '-' }}
+                </span>
+              </span>
+              <span>|</span>
+              <span>
+                <strong>신청일:</strong>
+                <span class="status-value">
+                  {% if verification.created_at %} {{
+                  verification.created_at[:10] }} {% else %} - {% endif %}
+                </span>
+              </span>
+              {# 신청 취소 버튼 (상태가 pending일 때만 표시) #} {% if
+              verification.status == 'pending' %}
+              <span>|</span>
+              <span>
+                <button
+                  id="cancelButton"
+                  class="cancel-button"
+                  style="
+                    background-color: #f44336;
+                    color: white;
+                    padding: 5px 10px;
+                    border: none;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-size: 12px;
+                    transition: background-color 0.3s ease;
+                    /* vertical-align 제거 또는 조정 */
+                  "
+                >
+                  신청 취소
+                </button>
+              </span>
+              {% endif %}
+            </div>
+
+            {# 버튼 아래 추가 메시지 (별도 줄) - 이 부분은 그대로 둠 #} {% if
+            verification.status == 'approved' %}
+            <p style="color: green; margin-top: 10px; text-align: left">
+              관리자 인증이 완료되었습니다.
+            </p>
+            {% elif verification.status == 'rejected' %}
+            <p style="color: red; margin-top: 10px; text-align: left">
+              관리자 인증이 반려되었습니다. 다시 신청해주세요.
+            </p>
+            {% endif %} {% else %}
+            <p
+              class="no-verification"
+              style="color: #777; font-style: italic; text-align: left"
+            >
+              아직 관리자 인증 신청 내역이 없습니다.
+            </p>
+            {% endif %}
+          </div>
+          <!-- 현황 섹션 끝 -->
+        </div>
+      </div>
+    </div>
+
+    <!-- 카카오 주소 API 스크립트 -->
+    <script src="//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
+    <script>
+      const API_BASE_URL = ""; // 로컬 테스트용 API 주소 설정
+
+      // 현재 사용자 정보 로드
+      async function loadUserInfo() {
+        try {
+          const response = await fetch(`${API_BASE_URL}/api/current-user`);
+          const data = await response.json();
+
+          if (data.success) {
+            document.getElementById("userName").textContent = data.name;
+            document.getElementById("userEmail").textContent = data.email;
+            // const adminStatusEl = document.getElementById("adminStatus"); // adminStatus 요소 참조 제거
+            /* // adminStatus 업데이트 로직 제거
+            if (adminStatusEl)
+              adminStatusEl.textContent = data.is_admin
+                ? "관리자 인증 완료"
+                : "관리자 인증 필요";
+            */
+            // 현재 사용자 정보 표시 (폼 영역에도)
+            const currentUserNameEl =
+              document.getElementById("currentUserName");
+            const currentUserEmailEl =
+              document.getElementById("currentUserEmail");
+            if (currentUserNameEl) currentUserNameEl.textContent = data.name;
+            if (currentUserEmailEl) currentUserEmailEl.textContent = data.email;
+          } else {
+            window.location.href = "/login";
+          }
+        } catch (error) {
+          console.error("사용자 정보 로드 실패:", error);
+          // 로그인 페이지로 리디렉션 또는 오류 메시지 표시
+          // window.location.href = "/login";
+        }
+      }
+
+      // 로그아웃 처리
+      document
+        .getElementById("logoutBtn")
+        .addEventListener("click", async () => {
+          try {
+            const response = await fetch(`${API_BASE_URL}/api/logout`, {
+              method: "POST",
+            }); // 수정
+            if (response.ok) {
+              window.location.href = "/login"; // 로그인 페이지는 로컬 유지
+            } else {
+              alert("로그아웃 실패"); // 실패 시 알림
+            }
+          } catch (error) {
+            console.error("로그아웃 실패:", error);
+            alert("로그아웃 중 오류 발생");
+          }
+        });
+
+      // 관리자 인증 폼 제출 처리
+      const adminVerificationForm = document.getElementById(
+        "adminVerificationForm"
+      );
+      if (adminVerificationForm) {
+        adminVerificationForm.addEventListener("submit", async (e) => {
+          e.preventDefault();
+
+          const formData = {
+            organization: document.getElementById("organization").value,
+            representative: document.getElementById("representative").value,
+            businessNumber: document.getElementById("businessNumber").value,
+            officePhone: document.getElementById("officePhone").value,
+            address: document.getElementById("address").value,
+            managerPhone: document.getElementById("managerPhone").value,
+          };
+
+          try {
+            const response = await fetch(
+              `${API_BASE_URL}/api/admin-verification`,
+              {
+                // 수정
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify(formData),
+              }
+            );
+
+            const data = await response.json();
+            if (data.success) {
+              alert("관리자 인증이 신청되었습니다.");
+              window.location.reload(); // 페이지 새로고침으로 현황 업데이트
+            } else {
+              alert(data.message || "관리자 인증 신청에 실패했습니다.");
+            }
+          } catch (error) {
+            console.error("관리자 인증 신청 중 오류:", error);
+            alert("관리자 인증 신청 중 오류가 발생했습니다.");
+          }
+        });
+      }
+
+      // 신청 취소 처리
+      const cancelButton = document.getElementById("cancelButton");
+      if (cancelButton) {
+        cancelButton.addEventListener("click", async () => {
+          if (confirm("정말로 관리자 인증 신청을 취소하시겠습니까?")) {
+            try {
+              const response = await fetch(
+                `${API_BASE_URL}/api/admin-verification-cancel`,
+                {
+                  // 수정
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                }
+              );
+              const data = await response.json();
+              if (data.success) {
+                alert("신청이 성공적으로 취소되었습니다.");
+                window.location.reload(); // 페이지 새로고침
+              } else {
+                alert(data.message || "신청 취소에 실패했습니다.");
+              }
+            } catch (error) {
+              console.error("신청 취소 중 오류:", error);
+              alert("신청 취소 중 오류가 발생했습니다.");
+            }
+          }
+        });
+      }
+
+      // 카카오 주소 검색 API 함수 (관리자 인증용)
+      function execDaumPostcodeAdmin() {
+        new daum.Postcode({
+          oncomplete: function (data) {
+            // 팝업에서 검색결과 항목을 클릭했을때 실행할 코드를 작성하는 부분.
+
+            // 각 주소의 노출 규칙에 따라 주소를 조합한다.
+            // 내려오는 변수가 값이 없는 경우엔 공백('')값을 가지므로, 이를 참고하여 분기 한다.
+            var addr = ""; // 주소 변수
+            var extraAddr = ""; // 참고항목 변수
+
+            //사용자가 선택한 주소 타입에 따라 해당 주소 값을 가져온다.
+            if (data.userSelectedType === "R") {
+              // 사용자가 도로명 주소를 선택했을 경우
+              addr = data.roadAddress;
+            } else {
+              // 사용자가 지번 주소를 선택했을 경우(J)
+              addr = data.jibunAddress;
+            }
+
+            // 사용자가 선택한 주소가 도로명 타입일때 참고항목을 조합한다.
+            if (data.userSelectedType === "R") {
+              // 법정동명이 있을 경우 추가한다. (법정리는 제외)
+              // 법정동의 경우 마지막 문자가 "동/로/가"로 끝난다.
+              if (data.bname !== "" && /[동|로|가]$/g.test(data.bname)) {
+                extraAddr += data.bname;
+              }
+              // 건물명이 있고, 공동주택일 경우 추가한다.
+              if (data.buildingName !== "" && data.apartment === "Y") {
+                extraAddr +=
+                  extraAddr !== ""
+                    ? ", " + data.buildingName
+                    : data.buildingName;
+              }
+              // 표시할 참고항목이 있을 경우, 괄호까지 추가한 최종 문자열을 만든다.
+              //if(extraAddr !== ''){
+              //  extraAddr = ' (' + extraAddr + ')';
+              //}
+              // 참고항목은 상세주소 필드에 넣도록 유도할 수 있음
+            }
+
+            // 우편번호와 주소 정보를 해당 필드에 넣는다.
+            document.getElementById("postcode").value = data.zonecode;
+            document.getElementById("address").value = addr;
+            // 커서를 상세주소 필드로 이동한다.
+            document.getElementById("address_detail").focus();
+          },
+        }).open();
+      }
+
+      // 페이지 로드 시 실행
+      document.addEventListener("DOMContentLoaded", () => {
+        loadUserInfo();
+        // setupFormSubmit(); // 폼 제출 로직 확인 필요
+        // setupCancelButton(); // 취소 버튼 로직 확인 필요
+        // 기타 초기화 로직...
+      });
+    </script>
+  </body>
+</html>

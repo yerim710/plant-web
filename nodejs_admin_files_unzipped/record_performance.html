@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>봉사 실적 등록</title>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/style.css') }}"
+    />
+    <style>
+      /* 페이지 특정 스타일 */
+      .performance-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
+        font-size: 0.9em; /* 폰트 크기 약간 작게 */
+      }
+      .performance-table th,
+      .performance-table td {
+        border: 1px solid #ddd;
+        padding: 8px 10px; /* 패딩 약간 줄임 */
+        text-align: center;
+        vertical-align: middle;
+      }
+      .performance-table th {
+        background-color: #f8f9fa;
+        font-weight: 600;
+      }
+      .performance-table td:nth-child(6), /* 봉사 제목 */
+        .performance-table td:nth-child(7) {
+        /* 봉사 내용 */
+        text-align: left;
+      }
+      .action-buttons {
+        margin-top: 20px;
+        text-align: right;
+      }
+      .action-buttons button {
+        padding: 8px 16px;
+        margin-left: 8px;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 0.9em;
+        border: 1px solid transparent;
+        transition: all 0.2s ease-in-out;
+      }
+      .register-btn {
+        background-color: #28a745;
+        color: white;
+        border-color: #28a745;
+      }
+      .reject-btn {
+        background-color: #dc3545;
+        color: white;
+        border-color: #dc3545;
+      }
+      /* 상태 표시 스타일 */
+      .status-recorded {
+        color: #007bff; /* 파란색 */
+        font-weight: bold;
+      }
+      .status-rejected {
+        color: #dc3545; /* 빨간색 */
+        font-weight: bold;
+      }
+      .status-pending {
+        color: #6c757d; /* 회색 */
+      }
+    </style>
+  </head>
+  <body>
+    <div class="main-container">
+      {# 사용자 정보 및 사이드바 #}
+      <div class="user-info-container">
+        <div class="user-info">
+          <span id="userName"
+            >{{ current_user.name if current_user else '' }}</span
+          >
+          <span id="userEmail"
+            >{{ current_user.email if current_user else '' }}</span
+          >
+          <button id="logoutBtn" class="logout-btn">로그아웃</button>
+        </div>
+      </div>
+      <div class="sidebar">
+        <h2>메뉴</h2>
+        <ul>
+          {# --- 모든 사용자 공통 메뉴 --- #}
+          <li><a href="{{ url_for('main_page') }}" {% if page_type == 'main' %}class="active"{% endif %}>홈</a></li>
+          <li><a href="{{ url_for('profile_page') }}" {% if page_type == 'profile' %}class="active"{% endif %}>프로필</a></li>
+      
+          {# --- admin@test.com 전용 메뉴 --- #}
+          {% if current_user and current_user.email == 'admin@test.com' %}
+            <li><a href="{{ url_for('approve_requests_page') }}" {% if page_type == 'approve_requests' %}class="active"{% endif %}>관리자 승인</a></li>
+            <li><a href="{{ url_for('demand_stats_page') }}" {% if page_type == 'demand_stats' %}class="active"{% endif %}>수요처 실적 현황</a></li>
+          
+          {# --- 일반 사용자 (admin@test.com 제외 모든 사용자) 전용 메뉴 --- #}
+          {% else %}
+            <li><a href="{{ url_for('admin_verification') }}" {% if page_type == 'admin_verification' %}class="active"{% endif %}>관리자 인증</a></li>
+            <li><a href="{{ url_for('register_volunteer_page') }}" {% if page_type == 'register_volunteer' %}class="active"{% endif %}>봉사 등록</a></li>
+            <li><a href="{{ url_for('manage_volunteers_page') }}" {% if page_type == 'manage_volunteers' %}class="active"{% endif %}>봉사 관리</a></li>
+            <li><a href="{{ url_for('record_performance_page') }}" {% if page_type == 'record_performance' %}class="active"{% endif %}>실적 등록</a></li>
+          {% endif %}
+        </ul>
+      </div>
+
+      {# 메인 콘텐츠 #}
+      <div class="main-content">
+        {% if not (current_user and current_user.is_admin) %}
+        <div class="no-access-container" style="text-align:center; margin-top:80px;">
+          <h2 style="margin-bottom:24px;">접근 권한 없음</h2>
+          <p style="font-size:1.2em; color:#6c757d; margin-bottom:16px;">이 기능을 사용하려면 관리자 인증이 필요합니다.</p>
+          <p style="color:#6c757d; margin-bottom:32px;">아직 관리자 인증을 신청하지 않으셨다면, 아래 버튼을 눌러 신청 페이지로 이동해주세요.</p>
+          <a href="{{ url_for('admin_verification') }}" class="btn btn-primary" style="padding:12px 32px; font-size:1.1em; background:#2196f3; color:#fff; border-radius:6px; text-decoration:none;">관리자 인증 신청하기</a>
+        </div>
+        {% else %}
+        <h2>봉사 실적 등록</h2>
+
+        <div class="action-buttons">
+          <button id="registerSelectedBtn" class="register-btn">
+            실적 등록
+          </button>
+          <button id="rejectSelectedBtn" class="reject-btn">반려</button>
+          {# TODO: 반려 기능 명확화 #}
+        </div>
+
+        <table class="performance-table">
+          <thead>
+            <tr>
+              <th><input type="checkbox" id="selectAllCheckbox" /></th>
+              <th>순번</th>
+              <th>봉사자</th>
+              <th>회원ID</th>
+              <th>소속센터</th>
+              {#
+              <th>생년월일</th>
+              - 제외 #}
+              <th>봉사 제목</th>
+              <th>봉사활동 내용</th>
+              <th>활동일자</th>
+              <th>활동 시간</th>
+              <th>봉사 인정시간</th>
+              <th>승인 여부</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for app in applications %}
+            <tr data-application-id="{{ app.application_id }}">
+              <td><input type="checkbox" class="record-checkbox" /></td>
+              <td>{{ loop.index }}</td>
+              <td>{{ app.applicant_name }}</td>
+              <td>{{ app.applicant_email }}</td>
+              <td>{{ app.admin_org_name }}</td>
+              {#
+              <td>-</td>
+              생년월일 제외 #}
+              <td>{{ app.activity_title }}</td>
+              <td>{{ app.volunteer_content | truncate(50) }}</td>
+              {# 내용 길면 자르기 #}
+              <td>{{ app.volunteer_date }}</td>
+              <td>
+                {{ app.activity_time_start }} - {{ app.activity_time_end }}
+              </td>
+              <td>{{ app.credited_hours }}</td>
+              <td>
+                {% if app.performance_status == 'recorded' %}
+                <span class="status-recorded">요청</span>
+                {% elif app.performance_status == 'rejected' %}
+                <span class="status-rejected">반려</span>
+                {% elif app.performance_status == 'pending' or not
+                app.performance_status %} {# 'pending'이거나 아직 값이
+                없는(NULL) 경우 #}
+                <span class="status-pending">대기</span>
+                {% else %}
+                <span class="status-unknown">{{ app.performance_status }}</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="11">실적을 등록할 승인된 신청 내역이 없습니다.</td>
+              {# 컬럼 수 맞게 colspan 조정 #}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
+      </div>
+    </div>
+
+    <script>
+      // TODO: 체크박스 선택 및 버튼 클릭 시 동작하는 JavaScript 구현
+      // 예: 선택된 application_id 가져오기, API 호출 등
+
+      const API_BASE_URL = ""; // 필요시 API 기본 URL 설정
+
+      // 전체 선택 체크박스 기능
+      const selectAllCheckbox = document.getElementById("selectAllCheckbox");
+      const recordCheckboxes = document.querySelectorAll(".record-checkbox");
+
+      if (selectAllCheckbox) {
+        selectAllCheckbox.addEventListener("change", (event) => {
+          recordCheckboxes.forEach((checkbox) => {
+            checkbox.checked = event.target.checked;
+          });
+        });
+      }
+
+      recordCheckboxes.forEach((checkbox) => {
+        checkbox.addEventListener("change", () => {
+          if (selectAllCheckbox) {
+            const allChecked = Array.from(recordCheckboxes).every(
+              (cb) => cb.checked
+            );
+            selectAllCheckbox.checked = allChecked;
+          }
+        });
+      });
+
+      // 선택된 항목 처리 함수
+      async function processSelectedApplications(action) {
+        const selectedRows = Array.from(recordCheckboxes).filter(
+          (checkbox) => checkbox.checked
+        );
+        const selectedIds = selectedRows.map((checkbox) => {
+          return checkbox.closest("tr").dataset.applicationId;
+        });
+
+        if (selectedIds.length === 0) {
+          alert("먼저 처리할 신청 항목을 선택해주세요.");
+          return;
+        }
+
+        let apiPayload = { ids: selectedIds, action: action };
+        let confirmMessage = "";
+
+        if (action === "register") {
+          confirmMessage = `선택된 ${selectedIds.length}개의 항목에 대해 실적을 등록하시겠습니까?`;
+        } else if (action === "reject") {
+          const reason = prompt(
+            `선택된 ${selectedIds.length}개의 항목을 반려 처리합니다. 반려 사유를 입력해주세요:`
+          );
+          if (reason === null) {
+            // 사용자가 취소 버튼을 누름
+            alert("반려 처리가 취소되었습니다.");
+            return;
+          }
+          if (!reason.trim()) {
+            alert("반려 사유를 반드시 입력해야 합니다.");
+            return;
+          }
+          apiPayload.reason = reason.trim();
+          confirmMessage = `선택된 ${selectedIds.length}개의 항목을 다음 사유로 반려 처리하시겠습니까?\n사유: ${apiPayload.reason}`;
+        }
+
+        if (!confirm(confirmMessage)) {
+          return;
+        }
+
+        try {
+          const response = await fetch(
+            `${API_BASE_URL}/api/admin/process-performance`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(apiPayload),
+            }
+          );
+          const result = await response.json();
+          alert(result.message);
+          if (result.success) {
+            window.location.reload(); // 성공 시 페이지 새로고침
+          }
+        } catch (error) {
+          console.error(`실적 ${action} 처리 중 오류:`, error);
+          alert("처리 중 오류가 발생했습니다.");
+        }
+      }
+
+      // 버튼 이벤트 리스너
+      const registerSelectedBtn = document.getElementById(
+        "registerSelectedBtn"
+      );
+      const rejectSelectedBtn = document.getElementById("rejectSelectedBtn");
+
+      if (registerSelectedBtn) {
+        registerSelectedBtn.addEventListener("click", () =>
+          processSelectedApplications("register")
+        );
+      }
+
+      if (rejectSelectedBtn) {
+        rejectSelectedBtn.addEventListener("click", () =>
+          processSelectedApplications("reject")
+        );
+      }
+
+      // 로그아웃 스크립트 (필요 시 추가)
+      function setupLogout() {
+        const logoutBtn = document.getElementById("logoutBtn");
+        if (logoutBtn) {
+          logoutBtn.addEventListener("click", async () => {
+            try {
+              const response = await fetch("/api/logout", { method: "POST" });
+              if (response.ok) {
+                window.location.href = "/login";
+              } else {
+                alert("로그아웃 실패");
+              }
+            } catch (error) {
+              alert("로그아웃 중 오류");
+            }
+          });
+        }
+      }
+      document.addEventListener("DOMContentLoaded", setupLogout);
+    </script>
+  </body>
+</html>

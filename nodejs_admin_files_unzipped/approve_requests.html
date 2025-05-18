@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>관리자 인증 승인</title>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/style.css') }}"
+    />
+    <style>
+      /* approve_requests.html 전용 스타일 */
+      .approve-requests-container {
+        padding: 30px;
+        background-color: #fff;
+        border-radius: 8px;
+        box-shadow: 0 2px 15px rgba(0, 0, 0, 0.1);
+        margin-top: 20px;
+        min-height: 180px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        max-width: 1400px;
+        margin-left: auto;
+        margin-right: auto;
+      }
+      .approve-requests-container h1 {
+        text-align: center;
+        margin-bottom: 30px;
+        color: #333;
+      }
+      .requests-table {
+        width: 100%;
+        min-width: 1100px;
+        border-collapse: collapse;
+        margin-top: 20px;
+        font-size: 1.05em;
+      }
+      .requests-table th,
+      .requests-table td {
+        border: 1px solid #ddd;
+        padding: 18px 16px;
+        text-align: left;
+        font-size: 1.05em;
+        height: 48px;
+      }
+      .requests-table th {
+        background-color: #f8f9fa;
+        font-weight: bold;
+      }
+      .requests-table tr:nth-child(even) {
+        background-color: #f2f2f2;
+      }
+      .requests-table td button {
+        padding: 6px 12px;
+        margin-right: 5px;
+        font-size: 13px;
+        cursor: pointer;
+        border: none;
+        border-radius: 4px;
+        color: white;
+      }
+      .approve-btn {
+        background-color: #28a745; /* Green */
+      }
+      .approve-btn:hover {
+        background-color: #218838;
+      }
+      .reject-btn {
+        background-color: #dc3545; /* Red */
+      }
+      .reject-btn:hover {
+        background-color: #c82333;
+      }
+      .rejection-reason-group {
+        margin-top: 10px;
+        display: none; /* 초기에는 숨김 */
+      }
+      .rejection-reason-group textarea {
+        width: 100%;
+        min-height: 60px;
+        padding: 8px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        margin-bottom: 5px;
+      }
+      .confirm-reject-btn {
+        background-color: #ffc107; /* Yellow */
+        color: #333;
+      }
+      .confirm-reject-btn:hover {
+        background-color: #e0a800;
+      }
+      .action-cell {
+        min-width: 220px; /* 버튼 및 입력 필드 공간 확보 */
+      }
+      .processed-text {
+        font-weight: bold;
+        color: #6c757d; /* Gray */
+      }
+      .action-buttons {
+        text-align: right;
+        margin-bottom: 15px;
+      }
+      .excel-btn {
+        padding: 8px 15px;
+        background-color: #2196f3; /* 파란색 */
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-block;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="main-container">
+      <!-- 사용자 정보 및 사이드바 (다른 페이지와 동일하게 포함 필요) -->
+      <!-- 예시: user-info-container 와 sidebar div 포함 -->
+      <!-- 실제 구현 시에는 base.html 상속 등을 통해 중복 제거 권장 -->
+      <div class="user-info-container">
+        <div class="user-info">
+          <span id="userName">{{ current_user.name if current_user else '' }}</span>
+          <!-- 세션에서 직접 가져오거나 JS로 로드 -->
+          <span id="userEmail">{{ current_user.email if current_user else '' }}</span>
+          <button id="logoutBtn" class="logout-btn">로그아웃</button>
+        </div>
+      </div>
+      <div class="sidebar">
+        <h2>메뉴</h2>
+        <ul>
+          {# --- 모든 사용자 공통 메뉴 --- #}
+          <li><a href="{{ url_for('main_page') }}" {% if page_type == 'main' %}class="active"{% endif %}>홈</a></li>
+          <li><a href="{{ url_for('profile_page') }}" {% if page_type == 'profile' %}class="active"{% endif %}>프로필</a></li>
+      
+          {# --- admin@test.com 전용 메뉴 --- #}
+          {% if current_user and current_user.email == 'admin@test.com' %}
+            <li><a href="{{ url_for('approve_requests_page') }}" {% if page_type == 'approve_requests' %}class="active"{% endif %}>관리자 승인</a></li>
+            <li><a href="{{ url_for('demand_stats_page') }}" {% if page_type == 'demand_stats' %}class="active"{% endif %}>수요처 실적 현황</a></li>
+          
+          {# --- 일반 사용자 (admin@test.com 제외 모든 사용자) 전용 메뉴 --- #}
+          {% else %}
+            <li><a href="{{ url_for('admin_verification') }}" {% if page_type == 'admin_verification' %}class="active"{% endif %}>관리자 인증</a></li>
+            <li><a href="{{ url_for('register_volunteer_page') }}" {% if page_type == 'register_volunteer' %}class="active"{% endif %}>봉사 등록</a></li>
+            <li><a href="{{ url_for('manage_volunteers_page') }}" {% if page_type == 'manage_volunteers' %}class="active"{% endif %}>봉사 관리</a></li>
+            <li><a href="{{ url_for('record_performance_page') }}" {% if page_type == 'record_performance' %}class="active"{% endif %}>실적 등록</a></li>
+          {% endif %}
+        </ul>
+      </div>
+
+      <div class="main-content">
+        <h2>관리자 인증 승인</h2>
+
+        {# 통계 정보 제거 #} {# Flash 메시지 표시 #} {% with messages =
+        get_flashed_messages(with_categories=true) %} {% if messages %}
+        <div class="flash-messages">
+          {% for category, message in messages %}
+          <div class="alert alert-{{ category }}">{{ message }}</div>
+          {% endfor %}
+        </div>
+        {% endif %} {% endwith %} {# 대기 중인 요청 테이블 #}
+        <h3>대기 중인 요청 <span style="font-size:0.9em; color:#2196f3;">({{ pending_requests|length }})</span></h3>
+        <div class="approve-requests-container">
+          <!-- 엑셀 다운로드 버튼 추가 -->
+          <div class="action-buttons">
+            <a href="/admin/download-requests" class="excel-btn"
+              >엑셀 다운로드</a
+            >
+          </div>
+
+          {% if pending_requests %}
+          <table class="requests-table">
+            <thead>
+              <tr>
+                <th>신청자</th>
+                <th>기관명</th>
+                <th>대표자명</th>
+                <th>사업자번호</th>
+                <th>사무실 연락처</th>
+                <th>주소</th>
+                <th>담당자 연락처</th>
+                <th>신청일</th>
+                <th>처리</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for req in pending_requests %}
+              <tr data-request-id="{{ req.id }}">
+                <td>{{ req.user_name }} ({{ req.user_email }})</td>
+                <td>{{ req.organization }}</td>
+                <td>{{ req.representative }}</td>
+                <td>{{ req.business_number }}</td>
+                <td>{{ req.office_phone }}</td>
+                <td>{{ req.address }}</td>
+                <td>{{ req.manager_phone }}</td>
+                <td>{{ req.created_at[:16] if req.created_at else '-' }}</td>
+                <td class="action-cell">
+                  <button class="approve-btn">승인</button>
+                  <button class="reject-btn">반려</button>
+                  <div class="rejection-reason-group">
+                    <textarea
+                      placeholder="반려 사유를 입력하세요..."
+                    ></textarea>
+                    <button class="confirm-reject-btn">반려 확정</button>
+                  </div>
+                  <span class="processed-text" style="display: none"
+                    >처리 완료</span
+                  >
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% else %}
+          <p>대기 중인 관리자 인증 신청이 없습니다.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        // 로그아웃 로직 (필요시 다른 페이지 JS에서 가져오기)
+        const logoutBtn = document.getElementById("logoutBtn");
+        if (logoutBtn) {
+          logoutBtn.addEventListener("click", async () => {
+            try {
+              const response = await fetch("/api/logout", { method: "POST" });
+              if (response.ok) {
+                window.location.href = "/login";
+              } else {
+                alert("로그아웃 실패");
+              }
+            } catch (error) {
+              console.error("로그아웃 오류:", error);
+              alert("로그아웃 중 오류");
+            }
+          });
+        }
+
+        // 승인 버튼 처리
+        document.querySelectorAll(".approve-btn").forEach((button) => {
+          button.addEventListener("click", async (e) => {
+            const row = e.target.closest("tr");
+            const requestId = row.dataset.requestId;
+            const actionCell = e.target.closest(".action-cell");
+
+            if (confirm("이 신청을 승인하시겠습니까?")) {
+              try {
+                const response = await fetch(
+                  `/api/admin/approve/${requestId}`,
+                  {
+                    method: "POST",
+                  }
+                );
+                const data = await response.json();
+                alert(data.message);
+                if (data.success) {
+                  actionCell
+                    .querySelectorAll("button")
+                    .forEach((btn) => (btn.style.display = "none"));
+                  actionCell.querySelector(
+                    ".rejection-reason-group"
+                  ).style.display = "none";
+                  actionCell.querySelector(".processed-text").textContent =
+                    "승인됨";
+                  actionCell.querySelector(".processed-text").style.display =
+                    "inline";
+                  // row.style.opacity = 0.7;
+                }
+              } catch (error) {
+                console.error("승인 처리 중 오류:", error);
+                alert("승인 처리 중 오류가 발생했습니다.");
+              }
+            }
+          });
+        });
+
+        // 반려 버튼 처리 (사유 입력 필드 표시)
+        document.querySelectorAll(".reject-btn").forEach((button) => {
+          button.addEventListener("click", (e) => {
+            const actionCell = e.target.closest(".action-cell");
+            const reasonGroup = actionCell.querySelector(
+              ".rejection-reason-group"
+            );
+            // 다른 버튼 숨기고 사유 입력 필드 표시
+            actionCell.querySelector(".approve-btn").style.display = "none";
+            e.target.style.display = "none"; // 현재 '반려' 버튼도 숨김
+            reasonGroup.style.display = "block";
+          });
+        });
+
+        // 반려 확정 버튼 처리
+        document.querySelectorAll(".confirm-reject-btn").forEach((button) => {
+          button.addEventListener("click", async (e) => {
+            const row = e.target.closest("tr");
+            const requestId = row.dataset.requestId;
+            const actionCell = e.target.closest(".action-cell");
+            const reasonTextarea = actionCell.querySelector("textarea");
+            const reason = reasonTextarea.value.trim();
+
+            if (!reason) {
+              alert("반려 사유를 입력해주세요.");
+              reasonTextarea.focus();
+              return;
+            }
+
+            if (confirm("이 신청을 반려하시겠습니까?")) {
+              try {
+                const response = await fetch(`/api/admin/reject/${requestId}`, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({ reason: reason }),
+                });
+                const data = await response.json();
+                alert(data.message);
+                if (data.success) {
+                  actionCell.querySelector(
+                    ".rejection-reason-group"
+                  ).style.display = "none";
+                  actionCell.querySelector(".processed-text").textContent =
+                    "반려됨";
+                  actionCell.querySelector(".processed-text").style.display =
+                    "inline";
+                  // row.style.opacity = 0.7;
+                }
+              } catch (error) {
+                console.error("반려 처리 중 오류:", error);
+                alert("반려 처리 중 오류가 발생했습니다.");
+              }
+            }
+          });
+        });
+      });
+    </script>
+  </body>
+</html>
