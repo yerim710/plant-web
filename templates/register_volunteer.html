@@ -216,34 +216,6 @@
               />
             </div>
 
-            <!-- 첨부파일 (1열) -->
-            <div class="form-group">
-              <label for="attachment">첨부파일</label>
-              <!-- 숨겨진 실제 파일 입력 -->
-              <input
-                type="file"
-                id="attachmentInput"
-                name="attachment"
-                style="display: none"
-              />
-              <!-- 파일 선택을 위한 링크 -->
-              <a
-                href="#"
-                id="attachmentLink"
-                style="
-                  text-decoration: underline;
-                  cursor: pointer;
-                  margin-right: 10px;
-                "
-                >파일 선택</a
-              >
-              <!-- 선택된 파일 이름 표시 -->
-              <span id="selectedFileName">선택된 파일 없음</span>
-            </div>
-
-            <!-- (빈 2열) -->
-            <div class="form-group"></div>
-
             <!-- 봉사 장소 (전체 너비) -->
             <div class="form-group full-width">
               <label>봉사 장소</label>
@@ -592,36 +564,11 @@
         }
       }
 
-      // 첨부파일 링크 클릭 및 파일 선택 처리
-      function setupAttachmentLink() {
-        const attachmentLink = document.getElementById("attachmentLink");
-        const attachmentInput = document.getElementById("attachmentInput");
-        const selectedFileNameSpan =
-          document.getElementById("selectedFileName");
-
-        if (attachmentLink && attachmentInput && selectedFileNameSpan) {
-          attachmentLink.addEventListener("click", (e) => {
-            e.preventDefault(); // 링크 기본 동작 방지
-            attachmentInput.click(); // 숨겨진 input 클릭 트리거
-          });
-
-          attachmentInput.addEventListener("change", () => {
-            if (attachmentInput.files.length > 0) {
-              selectedFileNameSpan.textContent = attachmentInput.files[0].name;
-            } else {
-              selectedFileNameSpan.textContent = "선택된 파일 없음";
-            }
-          });
-        }
-      }
-
       // 페이지 로드 시 실행
       document.addEventListener("DOMContentLoaded", () => {
         loadUserInfo();
         setupLogout();
         setupFormSubmit();
-        setupAttachmentLink();
-        // kakao.maps.load()는 비동기이므로 여기서 지도 초기화를 기다릴 필요 없음
       });
     </script>
   </body>

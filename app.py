@@ -7,6 +7,7 @@ import os
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.header import Header
 from datetime import datetime, timedelta
 from werkzeug.utils import secure_filename
 import base64
@@ -20,6 +21,10 @@ from functools import wraps
 import json
 import secrets # 보안 강화를 위해 secrets 모듈 사용
 from collections import defaultdict
+from flask_mail import Mail, Message
+from flask_jwt_extended import JWTManager, create_access_token
+from itsdangerous import URLSafeTimedSerializer
+from db import Database
 
 # 허용할 파일 확장자 목록
 ALLOWED_EXTENSIONS = {'txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif'}
@@ -73,11 +78,28 @@ init_email_verification_db() # Call this at startup
 app = Flask(__name__, static_folder='static')
 CORS(app)
 
+# JWT 설정
+app.config['JWT_SECRET_KEY'] = 'your-jwt-secret-key'  # 실제 운영 환경에서는 안전한 키로 변경해야 합니다
+jwt = JWTManager(app)
+
 # 파일 업로드 폴더 설정 추가
 UPLOAD_FOLDER = os.path.join(current_dir, 'static', 'uploads')
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 app.secret_key = 'your-secret-key'  # 세션을 위한 비밀 키
+
+# Flask-Mail 설정
+app.config['MAIL_SERVER'] = 'smtp.naver.com'
+app.config['MAIL_PORT'] = 465
+app.config['MAIL_USE_SSL'] = True
+app.config['MAIL_USERNAME'] = 'yerim8896@naver.com'
+app.config['MAIL_PASSWORD'] = 'CT42UW86R7Y5'  # 앱 비밀번호로 변경
+app.config['MAIL_DEFAULT_SENDER'] = 'yerim8896@naver.com'
+
+mail = Mail(app)
+
+# Database 인스턴스 생성
+db = Database()
 
 # 로그인 확인 데코레이터 추가
 def login_required(f):
@@ -379,63 +401,66 @@ def get_current_user():
         logger.error(f"사용자 정보 조회 오류: {str(e)}")
         return jsonify({'success': False, 'message': '서버 오류가 발생했습니다.'}), 500
 
-@app.route('/api/admin-verification', methods=['POST'])
+@app.route('/api/admin/verification', methods=['POST'])
 def submit_admin_verification():
     conn = None
     try:
-        data = request.get_json()
-        if not data:
-            logger.error("요청 데이터가 없습니다.")
-            return jsonify({"success": False, "message": "요청 데이터가 없습니다."}), 400
+        # FormData로 전송된 데이터 받기
+        form = request.form
+        files = request.files
 
         user_id = session.get("user_id")
         if not user_id:
             logger.error("로그인이 필요합니다.")
             return jsonify({"success": False, "message": "로그인이 필요합니다."}), 401
 
-        # 필수 필드 검증
-        required_fields = ["organization", "representative", "businessNumber", "officePhone", "address", "managerPhone"]
+        # 필수 필드 검증 (form에서 꺼냄)
+        required_fields = [
+            "organization_name", "business_number", "organization_type",
+            "manager_name", "manager_position", "manager_phone", "manager_email",
+            "address", "main_activities"
+        ]
         for field in required_fields:
-            if field not in data or not data[field]:
+            if field not in form or not form[field]:
                 logger.error(f"필수 필드 누락: {field}")
                 return jsonify({"success": False, "message": f"{field} 필드는 필수입니다."}), 400
 
-        # 데이터베이스 연결
+        # 파일 업로드 처리 예시
+        business_license = files.get('business_license')
+        id_card = files.get('id_card')
+        # 실제 파일 저장 로직은 필요에 따라 추가
+
+        # 데이터베이스 연결 및 저장 (예시)
         conn = sqlite3.connect(USERS_DB_PATH)
         cursor = conn.cursor()
-        
-        # 데이터베이스에 저장
         cursor.execute("""
             INSERT INTO admin_verifications 
-            (user_id, organization, representative, business_number, office_phone, address, manager_phone, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (user_id, organization, representative, business_number, organization_type, manager_name, manager_position, manager_phone, manager_email, address, main_activities, office_phone, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             user_id,
-            data["organization"],
-            data["representative"],
-            data["businessNumber"],
-            data["officePhone"],
-            data["address"],
-            data["managerPhone"],
+            form["organization_name"],
+            form["representative"],
+            form["business_number"],
+            form["organization_type"],
+            form["manager_name"],
+            form["manager_position"],
+            form["manager_phone"],
+            form["manager_email"],
+            form["address"],
+            form["main_activities"],
+            "",  # office_phone 빈 문자열로 저장
             "pending"
         ))
-        
         conn.commit()
         logger.info("관리자 인증 정보가 성공적으로 저장되었습니다.")
         return jsonify({"success": True, "message": "관리자 인증이 신청되었습니다."})
-        
-    except sqlite3.Error as e:
-        logger.error(f"데이터베이스 오류: {str(e)}")
-        if conn:
-            conn.rollback()
-        return jsonify({"success": False, "message": "데이터베이스 오류가 발생했습니다."}), 500
-        
+
     except Exception as e:
         logger.error(f"서버 오류: {str(e)}")
         if conn:
             conn.rollback()
         return jsonify({"success": False, "message": "서버 오류가 발생했습니다."}), 500
-        
     finally:
         if conn:
             conn.close()
@@ -453,28 +478,45 @@ def login():
         if not email or not password:
             return jsonify({'success': False, 'message': '이메일과 비밀번호를 모두 입력해주세요.'}), 400
         
-        conn = sqlite3.connect(USERS_DB_PATH)
+        conn = sqlite3.connect('users.db')
         cursor = conn.cursor()
         
         try:
+            # 먼저 admins 테이블에서 확인
+            cursor.execute('SELECT id, password FROM admins WHERE email = ?', (email,))
+            admin = cursor.fetchone()
+            
+            if admin and check_password_hash(admin[1], password):
+                session['user_id'] = admin[0]
+                access_token = create_access_token(identity=email)
+                return jsonify({
+                    'success': True,
+                    'access_token': access_token,
+                    'user': {
+                        'email': email,
+                        'is_admin': True
+                    }
+                })
+            
+            # admins 테이블에서 찾지 못한 경우 users 테이블에서 확인
             cursor.execute('SELECT id, password FROM users WHERE email = ?', (email,))
             user = cursor.fetchone()
             
             if not user:
                 return jsonify({'success': False, 'message': '이메일 또는 비밀번호가 올바르지 않습니다.'}), 401
                 
-            user_id = user[0]
-            hashed_password_from_db = user[1]
-            
-            # 사용자가 입력한 비밀번호와 DB에 저장된 해시된 비밀번호를 비교
-            if check_password_hash(hashed_password_from_db, password):
-                # 비밀번호 일치: 로그인 성공
-                session['user_id'] = user_id
-                logger.info(f"User {email} (ID: {user_id}) logged in successfully.")
-                return jsonify({'success': True, 'redirect': '/main'})
+            if check_password_hash(user[1], password):
+                session['user_id'] = user[0]
+                access_token = create_access_token(identity=email)
+                return jsonify({
+                    'success': True,
+                    'access_token': access_token,
+                    'user': {
+                        'email': email,
+                        'is_admin': False
+                    }
+                })
             else:
-                # 비밀번호 불일치
-                logger.warning(f"Login failed for user {email}: Incorrect password.")
                 return jsonify({'success': False, 'message': '이메일 또는 비밀번호가 올바르지 않습니다.'}), 401
                 
         except sqlite3.Error as e:
@@ -977,10 +1019,8 @@ def register_volunteer_activity():
          return jsonify({'success': False, 'message': '폼 데이터가 없습니다.'}), 400
 
     logger.debug(f"Received form data: {request.form}")
-    logger.debug(f"Received files: {request.files}")
 
     # 필수 필드 확인 (HTML에서 required 했더라도 서버에서 한번 더 확인)
-    # registration_org, admin_memo 등 제거된 필드는 제외
     required_fields = [
         'activity_title', 'volunteer_content', 'activity_type', 'activity_period_start',
         'activity_period_end', 'activity_time_start', 'activity_time_end',
@@ -996,31 +1036,6 @@ def register_volunteer_activity():
     # 활동 요일 처리
     activity_days_list = request.form.getlist('activity_days') # 체크박스는 getlist 사용
     activity_days_db_format = ','.join(activity_days_list) if activity_days_list else None
-
-    # 파일 처리 (이전 예시 코드 참조)
-    attachment_path = None
-    if 'attachment' in request.files:
-        file = request.files['attachment']
-        if file and file.filename != '':
-            if allowed_file(file.filename):
-                # 새 파일 저장
-                filename = secure_filename(file.filename)
-                base, extension = os.path.splitext(filename)
-                timestamp = int(time.time())
-                unique_filename = f"{base}_{timestamp}{extension}"
-                upload_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
-                if not os.path.exists(app.config['UPLOAD_FOLDER']):
-                    os.makedirs(app.config['UPLOAD_FOLDER'])
-                
-                try:
-                    file.save(upload_path)
-                    attachment_path = os.path.join('uploads', unique_filename).replace('\\', '/')
-                    logger.info(f"New file uploaded for volunteer {user_id}: {attachment_path}")
-                except Exception as e:
-                     logger.error(f"File upload failed during update for volunteer {user_id}: {e}", exc_info=True)
-                     return jsonify({'success': False, 'message': '파일 업로드 중 오류 발생'}), 500
-            else:
-                return jsonify({'success': False, 'message': '허용되지 않는 파일 형식입니다.'}), 400
     
     # 데이터베이스 저장
     conn = None
@@ -1032,10 +1047,10 @@ def register_volunteer_activity():
             INSERT INTO volunteers (
                 user_id, activity_title, volunteer_content, activity_type, activity_period_start,
                 activity_period_end, activity_time_start, activity_time_end, activity_days,
-                attachment_path, address, address_detail, volunteer_type, manager_name,
+                address, address_detail, volunteer_type, manager_name,
                 manager_phone, manager_email, max_volunteers, credited_hours, created_at
                 -- latitude, longitude는 지도 구현 후 추가
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             user_id,
             request.form['activity_title'],
@@ -1046,7 +1061,6 @@ def register_volunteer_activity():
             request.form['activity_time_start'],
             request.form['activity_time_end'],
             activity_days_db_format,
-            attachment_path,
             request.form.get('address'), # 주소 필드
             request.form.get('address_detail'), # 상세 주소 필드
             request.form['volunteer_type'],
@@ -1300,44 +1314,18 @@ def generate_temp_password(length=8):
 
 # 이메일 발송 헬퍼 함수
 def send_email(recipient_email, subject, body):
-    # !!! IMPORTANT: Ensure SMTP settings are correctly configured below !!!
-    # Consider using environment variables or a config file for security
-    smtp_server = "smtp.naver.com" # 네이버 SMTP 서버 주소
-    smtp_port = 587 # TLS 용 일반 포트
-    smtp_user = "yerim8896@naver.com" # 실제 네이버 이메일 주소
-    smtp_password = "4NQY982C9K12" # 실제 네이버 앱 비밀번호 (또는 계정 비밀번호)
-    sender_email = "yerim8896@naver.com" # 실제 발신자 이메일 주소
-
-    msg = MIMEText(body, _charset='utf-8')
-    msg['Subject'] = subject
-    msg['From'] = sender_email
-    msg['To'] = recipient_email
-
     try:
-        # 네이버 + starttls (port 587) 사용
-        with smtplib.SMTP(smtp_server, smtp_port) as server:
-            server.ehlo()
-            server.starttls()
-            server.ehlo()
-            server.login(smtp_user, smtp_password)
-            server.sendmail(sender_email, recipient_email, msg.as_string())
-        logger.info(f"Email successfully sent to {recipient_email} with subject: {subject}")
-        return True # 성공 시 True 반환
-    except smtplib.SMTPAuthenticationError:
-        logger.error(f"SMTP Authentication failed for user {smtp_user}. Check credentials.")
-        return False # 실패 시 False 반환
-    except smtplib.SMTPServerDisconnected:
-         logger.error("SMTP server disconnected unexpectedly.")
-         return False
-    except smtplib.SMTPRecipientsRefused:
-         logger.error(f"Recipient address {recipient_email} refused by the server.")
-         return False
-    except smtplib.SMTPException as e:
-        logger.error(f"Failed to send email to {recipient_email}: {e}", exc_info=True)
-        return False
+        msg = Message(
+            subject=subject,
+            recipients=[recipient_email],
+            body=body
+        )
+        mail.send(msg)
+        logger.info(f"이메일 전송 성공: {recipient_email}")
+        return True
     except Exception as e:
-         logger.error(f"An unexpected error occurred during email sending to {recipient_email}: {e}", exc_info=True)
-         return False
+        logger.error(f"이메일 전송 실패: {str(e)}")
+        return False
 
 # 비밀번호 재설정 요청 처리 API
 @app.route('/api/reset-password-request', methods=['POST'])
@@ -1439,8 +1427,8 @@ def send_verification_email():
         logger.info(f"Generated verification code {code} for email {email}, expires at {expires_at}")
 
         # Send email using the helper function
-        subject = "회원가입 인증 코드"
-        body = f"회원가입을 위한 인증 코드는 다음과 같습니다: {code}\n\n이 코드는 10분 후에 만료됩니다."
+        subject = "Plant 회원가입 인증 코드"
+        body = f"Plant 회원가입을 위한 인증 코드는 다음과 같습니다: {code}\n\n이 코드는 10분 후에 만료됩니다. 이메일 인증번호에 코드를 입력해 주세요."
         email_sent = send_email(email, subject, body)
 
         if email_sent:
@@ -1919,6 +1907,130 @@ def process_performance():
         if conn_v:
             conn_v.close()
             
+# 관리자 전용: 봉사 공고 등록 API
+@app.route('/admin/volunteer', methods=['POST'])
+@login_required
+@admin_required
+def create_volunteer_post():
+    data = request.get_json()
+
+    title = data.get('title')
+    description = data.get('description')
+    location = data.get('location')
+    date = data.get('date')  # 'YYYY-MM-DD' 형식
+
+    if not all([title, description, date]):
+        return jsonify({'error': '필수 항목 누락'}), 400
+
+    try:
+        conn = sqlite3.connect(VOLUNTEER_DB_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            INSERT INTO volunteers (activity_title, volunteer_content, address, volunteer_date, created_at)
+            VALUES (?, ?, ?, ?, ?)
+        """, (title, description, location, date, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+        
+        conn.commit()
+        return jsonify({'message': '공고 등록 완료'}), 201
+    except Exception as e:
+        logger.error(f"봉사 공고 등록 중 오류: {str(e)}")
+        if conn:
+            conn.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
+
+# 관리자 전용: 모든 봉사 공고 목록 조회 API    
+@app.route('/admin/volunteer/list', methods=['GET'])
+@login_required
+@admin_required
+def get_all_volunteer_posts_admin():
+    try:
+        conn = sqlite3.connect(VOLUNTEER_DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT id, activity_title as title, volunteer_content as description, 
+                   address as location, volunteer_date as date, created_at
+            FROM volunteers
+            ORDER BY created_at DESC
+        """)
+        
+        posts = [dict(row) for row in cursor.fetchall()]
+        return jsonify({'posts': posts}), 200
+    except Exception as e:
+        logger.error(f"봉사 공고 목록 조회 중 오류: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
+
+# 관리자 전용: 봉사 공고 수정 API     
+@app.route('/admin/volunteer/<int:post_id>', methods=['PUT'])
+@login_required
+@admin_required
+def update_volunteer_post(post_id):
+    data = request.get_json()
+    try:
+        title = data.get('title')
+        description = data.get('description')
+        location = data.get('location')
+        date = data.get('date')
+
+        if not all([title, description, date]):
+            return jsonify({'error': '필수 항목 누락'}), 400
+
+        conn = sqlite3.connect(VOLUNTEER_DB_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            UPDATE volunteers 
+            SET activity_title = ?, volunteer_content = ?, address = ?, volunteer_date = ?
+            WHERE id = ?
+        """, (title, description, location, date, post_id))
+        
+        if cursor.rowcount == 0:
+            return jsonify({'error': '해당 공고를 찾을 수 없습니다.'}), 404
+            
+        conn.commit()
+        return jsonify({'message': '공고 수정 완료'}), 200
+    except Exception as e:
+        logger.error(f"봉사 공고 수정 중 오류: {str(e)}")
+        if conn:
+            conn.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
+
+# 관리자 전용: 봉사 공고 삭제 API
+@app.route('/admin/volunteer/<int:post_id>', methods=['DELETE'])
+@login_required
+@admin_required
+def delete_volunteer_post(post_id):
+    try:
+        conn = sqlite3.connect(VOLUNTEER_DB_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute("DELETE FROM volunteers WHERE id = ?", (post_id,))
+        
+        if cursor.rowcount == 0:
+            return jsonify({'error': '해당 공고를 찾을 수 없습니다.'}), 404
+            
+        conn.commit()
+        return jsonify({'message': '공고 삭제 완료'}), 200
+    except Exception as e:
+        logger.error(f"봉사 공고 삭제 중 오류: {str(e)}")
+        if conn:
+            conn.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if conn:
+            conn.close()
+
 if __name__ == '__main__':
     # 모든 인터페이스에서 접속 가능하도록 호스트 변경
     app.run(host='0.0.0.0', port=5000, debug=True) 

@@ -98,9 +98,10 @@
 
             const data = await response.json();
 
-            if (data.success) {
-              alert("로그인 성공!");
-              window.location.href = "/main"; // 로그인 성공 시 메인 페이지로 이동
+            if (response.ok) {
+              // JWT 토큰을 로컬 스토리지에 저장
+              localStorage.setItem("access_token", data.access_token);
+              window.location.href = "/main";
             } else {
               alert(data.message || "로그인에 실패했습니다.");
             }

@@ -1,22 +1,20 @@
 // 로컬 테스트용 API 주소
-const API_BASE_URL = "";
+const API_BASE_URL = "http://172.30.1.17:5000";
 
 document.addEventListener("DOMContentLoaded", () => {
   console.log("DOMContentLoaded event fired"); // 로그 추가
-  const token = localStorage.getItem("token");
+  const token = localStorage.getItem("access_token");
   let currentUser = null; // 현재 사용자 정보를 저장할 변수
 
   // 사용자 정보 로드 함수
   async function loadUserInfo() {
     console.log("loadUserInfo started"); // 로그 추가
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/api/current-user` /*, {
-        // headers: { 
-        //   Accept: "application/json", // Accept 헤더 임시 제거
-        // },
-      }*/
-      );
+      const response = await fetch(`${API_BASE_URL}/api/current-user`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
       console.log("API fetch completed, status:", response.status); // 로그 추가
 
       // 응답 상태 코드 확인 추가

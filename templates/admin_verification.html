@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>관리자 인증</title>
+    <title>관리자 인증 신청</title>
     <!-- <link
       rel="stylesheet"
       href="{{ url_for('static', filename='css/main.css') }}"
@@ -12,6 +12,118 @@
       rel="stylesheet"
       href="{{ url_for('static', filename='css/style.css') }}"
     />
+    <style>
+      .verification-form {
+        max-width: 1400px;
+        min-width: 800px;
+        margin: 2rem auto;
+        padding: 4rem 3rem;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      }
+      .form-section {
+        margin-bottom: 2rem;
+        padding: 1rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+      }
+      .form-section h3 {
+        margin-top: 0;
+        color: #333;
+        border-bottom: 2px solid #007bff;
+        padding-bottom: 0.5rem;
+      }
+      .form-group {
+        margin-bottom: 1rem;
+      }
+      .form-group label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: bold;
+      }
+      .form-group input, .form-group textarea, .form-group select {
+        width: 100%;
+        padding: 1rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 1.15rem;
+        min-height: 48px;
+        box-sizing: border-box;
+      }
+      .form-group textarea {
+        min-height: 80px;
+      }
+      .required::after {
+        content: " *";
+        color: red;
+      }
+      .file-upload {
+        border: 2px dashed #ddd;
+        padding: 1rem;
+        text-align: center;
+        margin-bottom: 1rem;
+      }
+      .file-upload.dragover {
+        background-color: #f8f9fa;
+        border-color: #007bff;
+      }
+      .preview-image {
+        max-width: 200px;
+        margin-top: 1rem;
+      }
+      .verification-status {
+        margin-top: 1rem;
+        padding: 1rem;
+        border-radius: 4px;
+      }
+      .verification-status.pending {
+        background-color: #fff3cd;
+        color: #856404;
+      }
+      .verification-status.approved {
+        background-color: #d4edda;
+        color: #155724;
+      }
+      .verification-status.rejected {
+        background-color: #f8d7da;
+        color: #721c24;
+      }
+      .submit-btn {
+        background-color: #007bff;
+        color: white;
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        width: 100%;
+        font-size: 1.1rem;
+      }
+      .submit-btn:hover {
+        background-color: #0056b3;
+      }
+      .error-message {
+        color: red;
+        font-size: 0.9rem;
+        margin-top: 0.25rem;
+      }
+      .form-group.terms-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 1rem;
+      }
+      .form-group.terms-row label {
+        margin: 0;
+        font-weight: bold;
+        white-space: normal;
+      }
+      .form-group.terms-row input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+      }
+    </style>
   </head>
   <body class="admin-verification-page">
     <div class="main-container">
@@ -47,224 +159,153 @@
       </div>
 
       <div class="main-content">
-        <div class="admin-verification-container">
+        <div class="verification-form">
           <h2>관리자 인증 신청</h2>
-          <div class="current-user-info">
-            <h3>현재 사용자 정보</h3>
-            <p>이름: <span id="currentUserName"></span></p>
-            <p>이메일: <span id="currentUserEmail"></span></p>
-          </div>
-
-          <form id="adminVerificationForm">
-            <div class="form-row">
+          <p>관리자 인증을 위해 아래 정보를 모두 입력해주세요. * 표시는 필수 입력 항목입니다.</p>
+          
+          <form id="verificationForm" enctype="multipart/form-data">
+            <!-- 기관 정보 섹션 -->
+            <div class="form-section">
+              <h3>기관 정보</h3>
               <div class="form-group">
-                <label for="organization">기관명</label>
-                <input
-                  type="text"
-                  id="organization"
-                  name="organization"
-                  required
-                />
+                <label class="required">기관명</label>
+                <input type="text" name="organization_name" required>
               </div>
               <div class="form-group">
-                <label for="businessNumber">사업자 등록 번호</label>
-                <input
-                  type="text"
-                  id="businessNumber"
-                  name="businessNumber"
-                  required
-                />
-              </div>
-            </div>
-
-            <div class="form-row">
-              <div class="form-group">
-                <label for="representative">대표자명</label>
-                <input
-                  type="text"
-                  id="representative"
-                  name="representative"
-                  required
-                />
+                <label class="required">대표자명</label>
+                <input type="text" name="representative" required>
               </div>
               <div class="form-group">
-                <label for="officePhone">사무실 전화번호</label>
-                <input
-                  type="text"
-                  id="officePhone"
-                  name="officePhone"
-                  required
-                />
+                <label class="required">사업자등록번호</label>
+                <input type="text" name="business_number" pattern="\d{10}" required 
+                       placeholder="숫자 10자리">
+              </div>
+              <div class="form-group">
+                <label class="required">기관 유형</label>
+                <select name="organization_type" required>
+                  <option value="">선택하세요</option>
+                  <option value="nonprofit">비영리단체</option>
+                  <option value="company">기업</option>
+                  <option value="government">정부기관</option>
+                  <option value="school">교육기관</option>
+                  <option value="other">기타</option>
+                </select>
               </div>
             </div>
 
-            <div class="form-row">
-              <div class="form-group" style="flex-basis: 100%">
-                <label>주소</label>
-                <div style="display: flex; gap: 10px; margin-bottom: 5px">
-                  <input
-                    type="text"
-                    id="postcode"
-                    name="postcode"
-                    placeholder="우편번호"
-                    readonly
-                    style="flex-basis: 20%"
-                  />
-                  <button
-                    type="button"
-                    class="btn"
-                    onclick="execDaumPostcodeAdmin()"
-                    style="flex-basis: auto; width: auto; padding: 8px 15px"
-                  >
-                    주소 검색
-                  </button>
+            <!-- 담당자 정보 섹션 -->
+            <div class="form-section">
+              <h3>담당자 정보</h3>
+              <div class="form-group">
+                <label class="required">담당자명</label>
+                <input type="text" name="manager_name" required>
+              </div>
+              <div class="form-group">
+                <label class="required">직위</label>
+                <input type="text" name="manager_position" required>
+              </div>
+              <div class="form-group">
+                <label class="required">연락처</label>
+                <input type="tel" name="manager_phone" pattern="[0-9]{2,3}-[0-9]{3,4}-[0-9]{4}" 
+                       placeholder="010-0000-0000" required>
+              </div>
+              <div class="form-group">
+                <label class="required">이메일</label>
+                <input type="email" name="manager_email" required>
+              </div>
+            </div>
+
+            <!-- 기관 상세 정보 섹션 -->
+            <div class="form-section">
+              <h3>기관 상세 정보</h3>
+              <div class="form-group">
+                <label class="required">주소</label>
+                <div class="address-input-wrapper" style="display:flex; gap:8px; align-items:center;">
+                  <input type="text" name="postcode" id="postcode" required readonly style="width:120px; margin-right:8px; cursor:pointer;" onclick="execDaumPostcode()" placeholder="우편번호">
+                  <div style="position:relative; flex:1;">
+                    <input type="text" name="address" id="address" required readonly style="cursor:pointer; width:100%; padding-right:90px;" onclick="execDaumPostcode()">
+                    <a href="#" onclick="execDaumPostcode(); return false;"
+                       style="position:absolute; right:12px; top:50%; transform:translateY(-50%); color:#007bff; text-decoration:underline; font-size:1rem; background:#fff; padding:0 4px;">
+                      주소 검색
+                    </a>
+                  </div>
                 </div>
-                <input
-                  type="text"
-                  id="address"
-                  name="address"
-                  placeholder="주소"
-                  readonly
-                  style="margin-bottom: 5px"
-                />
-                <input
-                  type="text"
-                  id="address_detail"
-                  name="address_detail"
-                  placeholder="상세주소"
-                />
+                <input type="hidden" name="latitude" id="latitude">
+                <input type="hidden" name="longitude" id="longitude">
               </div>
-            </div>
-
-            <div class="form-row">
               <div class="form-group">
-                <label for="managerPhone">담당자 연락처</label>
-                <input
-                  type="text"
-                  id="managerPhone"
-                  name="managerPhone"
-                  required
-                />
+                <label>상세주소</label>
+                <input type="text" name="address_detail">
               </div>
-              <div class="form-group"></div>
+              <div class="form-group">
+                <label class="required">주요 사업 내용</label>
+                <textarea name="main_activities" rows="4" required></textarea>
+              </div>
             </div>
 
-            <button type="submit" class="btn">인증 신청</button>
+            <!-- 서류 업로드 섹션 -->
+            <div class="form-section">
+              <h3>필수 서류</h3>
+              <div class="form-group">
+                <label class="required">사업자등록증</label>
+                <div class="file-upload" id="businessLicenseUpload">
+                  <input type="file" name="business_license" accept=".pdf,.jpg,.jpeg,.png" required>
+                  <p>PDF 또는 이미지 파일 (최대 5MB)</p>
+                  <img id="businessLicensePreview" class="preview-image" style="display: none;">
+                </div>
+              </div>
+              <div class="form-group">
+                <label>추가 서류 (선택)</label>
+                <div class="file-upload" id="additionalDocsUpload">
+                  <input type="file" name="additional_docs" accept=".pdf,.jpg,.jpeg,.png" multiple>
+                  <p>PDF 또는 이미지 파일 (최대 5MB)</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- 약관 동의 섹션 -->
+            <div class="form-section">
+              <h3>약관 동의</h3>
+              <div class="form-group terms-row">
+                <label>전체 약관에 동의합니다.</label>
+                <input type="checkbox" id="checkAll">
+              </div>
+              <div class="form-group terms-row">
+                <label>개인정보 수집 및 이용에 동의합니다.</label>
+                <input type="checkbox" name="terms_agreement" class="terms-check" required>
+              </div>
+              <div class="form-group terms-row">
+                <label>제출한 서류의 진위여부를 확인할 수 있음을 동의합니다.</label>
+                <input type="checkbox" name="verification_agreement" class="terms-check" required>
+              </div>
+            </div>
+
+            <button type="submit" class="submit-btn">인증 신청하기</button>
           </form>
 
-          <!-- 승인 처리 현황 섹션 -->
-          <div
-            class="status-container"
-            style="
-              margin-top: 30px;
-              border-top: 1px solid #eee;
-              padding-top: 30px;
-            "
-          >
-            <h3>승인 처리 현황</h3>
-            {% if verification %}
-            <!-- 현황 정보를 한 줄에 표시하기 위한 flex 컨테이너 -->
-            <div
-              class="status-details"
-              style="
-                display: flex;
-                align-items: center;
-                gap: 10px;
-                flex-wrap: wrap;
-                margin-bottom: 15px;
-              "
-            >
-              <span>
-                <strong>상태:</strong>
-                <span
-                  class="status-value {% if verification.status == 'pending' %}status-pending {% elif verification.status == 'approved' %}status-approved {% elif verification.status == 'rejected' %}status-rejected {% endif %}"
-                >
-                  {% if verification.status %} {{ verification.status |
-                  replace('pending', '승인 대기') | replace('approved', '승인
-                  완료') | replace('rejected', '반려') }} {% else %} - {% endif
-                  %}
-                </span>
-              </span>
-              <span>|</span>
-              <span>
-                <strong>신청자:</strong>
-                <span class="status-value">
-                  {{ user.name if user else '-' }}
-                </span>
-              </span>
-              <span>|</span>
-              <span>
-                <strong>이메일:</strong>
-                <span class="status-value">
-                  {{ user.email if user else '-' }}
-                </span>
-              </span>
-              <span>|</span>
-              <span>
-                <strong>기관명:</strong>
-                <span class="status-value">
-                  {{ verification.organization if verification.organization else
-                  '-' }}
-                </span>
-              </span>
-              <span>|</span>
-              <span>
-                <strong>신청일:</strong>
-                <span class="status-value">
-                  {% if verification.created_at %} {{
-                  verification.created_at[:10] }} {% else %} - {% endif %}
-                </span>
-              </span>
-              {# 신청 취소 버튼 (상태가 pending일 때만 표시) #} {% if
-              verification.status == 'pending' %}
-              <span>|</span>
-              <span>
-                <button
-                  id="cancelButton"
-                  class="cancel-button"
-                  style="
-                    background-color: #f44336;
-                    color: white;
-                    padding: 5px 10px;
-                    border: none;
-                    border-radius: 4px;
-                    cursor: pointer;
-                    font-size: 12px;
-                    transition: background-color 0.3s ease;
-                    /* vertical-align 제거 또는 조정 */
-                  "
-                >
-                  신청 취소
-                </button>
-              </span>
-              {% endif %}
-            </div>
-
-            {# 버튼 아래 추가 메시지 (별도 줄) - 이 부분은 그대로 둠 #} {% if
-            verification.status == 'approved' %}
-            <p style="color: green; margin-top: 10px; text-align: left">
-              관리자 인증이 완료되었습니다.
-            </p>
+          {% if verification %}
+          <div class="verification-status-bar" style="margin-top:2rem; padding:1.5rem; border:1px solid #eee; border-radius:6px; background:#fafbfc;">
+            <strong>신청일:</strong> {{ verification.created_at[:10] if verification.created_at else '-' }}<br>
+            <strong>상태:</strong>
+            {% if verification.status == 'pending' %}
+              <span style="color: orange; font-weight:bold;">대기(신청중)</span>
+            {% elif verification.status == 'approved' %}
+              <span style="color: green; font-weight:bold;">수락</span>
             {% elif verification.status == 'rejected' %}
-            <p style="color: red; margin-top: 10px; text-align: left">
-              관리자 인증이 반려되었습니다. 다시 신청해주세요.
-            </p>
-            {% endif %} {% else %}
-            <p
-              class="no-verification"
-              style="color: #777; font-style: italic; text-align: left"
-            >
-              아직 관리자 인증 신청 내역이 없습니다.
-            </p>
+              <span style="color: red; font-weight:bold;">반려</span>
+              {% if verification.rejection_reason %}<br><strong>반려 사유:</strong> {{ verification.rejection_reason }}{% endif %}
+            {% else %}
+              <span>-</span>
             {% endif %}
           </div>
-          <!-- 현황 섹션 끝 -->
+          {% endif %}
         </div>
       </div>
     </div>
 
     <!-- 카카오 주소 API 스크립트 -->
     <script src="//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
+    <script src="//dapi.kakao.com/v2/maps/sdk.js?appkey=YOUR_KAKAO_APP_KEY&libraries=services"></script>
     <script>
       const API_BASE_URL = ""; // 로컬 테스트용 API 주소 설정
 
@@ -320,130 +361,87 @@
           }
         });
 
-      // 관리자 인증 폼 제출 처리
-      const adminVerificationForm = document.getElementById(
-        "adminVerificationForm"
-      );
-      if (adminVerificationForm) {
-        adminVerificationForm.addEventListener("submit", async (e) => {
-          e.preventDefault();
-
-          const formData = {
-            organization: document.getElementById("organization").value,
-            representative: document.getElementById("representative").value,
-            businessNumber: document.getElementById("businessNumber").value,
-            officePhone: document.getElementById("officePhone").value,
-            address: document.getElementById("address").value,
-            managerPhone: document.getElementById("managerPhone").value,
-          };
-
-          try {
-            const response = await fetch(
-              `${API_BASE_URL}/api/admin-verification`,
-              {
-                // 수정
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify(formData),
+      // 파일 업로드 미리보기
+      function setupFilePreview(inputId, previewId) {
+        const input = document.querySelector(`input[name="${inputId}"]`);
+        const preview = document.getElementById(previewId);
+        
+        input.addEventListener('change', function(e) {
+          const file = e.target.files[0];
+          if (file) {
+            if (file.type.startsWith('image/')) {
+              const reader = new FileReader();
+              reader.onload = function(e) {
+                preview.src = e.target.result;
+                preview.style.display = 'block';
               }
-            );
-
-            const data = await response.json();
-            if (data.success) {
-              alert("관리자 인증이 신청되었습니다.");
-              window.location.reload(); // 페이지 새로고침으로 현황 업데이트
+              reader.readAsDataURL(file);
             } else {
-              alert(data.message || "관리자 인증 신청에 실패했습니다.");
+              preview.style.display = 'none';
+            }
+          }
+        });
+      }
+
+      setupFilePreview('business_license', 'businessLicensePreview');
+
+      // 폼 제출 처리
+      document.addEventListener('DOMContentLoaded', function() {
+        const form = document.getElementById('verificationForm');
+        
+        form.addEventListener('submit', async function(e) {
+          e.preventDefault();
+          
+          const formData = new FormData(form);
+          
+          try {
+            const response = await fetch('/api/admin/verification', {
+              method: 'POST',
+              body: formData
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+              alert('인증 신청이 완료되었습니다. 검토 후 결과를 이메일로 알려드리겠습니다.');
+              window.location.href = '/main';
+            } else {
+              alert(data.message || '인증 신청 중 오류가 발생했습니다.');
             }
           } catch (error) {
-            console.error("관리자 인증 신청 중 오류:", error);
-            alert("관리자 인증 신청 중 오류가 발생했습니다.");
+            console.error('Error:', error);
+            alert('인증 신청 중 오류가 발생했습니다.');
           }
         });
-      }
 
-      // 신청 취소 처리
-      const cancelButton = document.getElementById("cancelButton");
-      if (cancelButton) {
-        cancelButton.addEventListener("click", async () => {
-          if (confirm("정말로 관리자 인증 신청을 취소하시겠습니까?")) {
-            try {
-              const response = await fetch(
-                `${API_BASE_URL}/api/admin-verification-cancel`,
-                {
-                  // 수정
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                  },
-                }
-              );
-              const data = await response.json();
-              if (data.success) {
-                alert("신청이 성공적으로 취소되었습니다.");
-                window.location.reload(); // 페이지 새로고침
-              } else {
-                alert(data.message || "신청 취소에 실패했습니다.");
-              }
-            } catch (error) {
-              console.error("신청 취소 중 오류:", error);
-              alert("신청 취소 중 오류가 발생했습니다.");
-            }
-          }
+        // 사업자등록번호 형식 검증
+        const businessNumberInput = document.querySelector('input[name="business_number"]');
+        businessNumberInput.addEventListener('input', function(e) {
+          this.value = this.value.replace(/[^0-9]/g, '').slice(0, 10);
         });
-      }
 
-      // 카카오 주소 검색 API 함수 (관리자 인증용)
-      function execDaumPostcodeAdmin() {
-        new daum.Postcode({
-          oncomplete: function (data) {
-            // 팝업에서 검색결과 항목을 클릭했을때 실행할 코드를 작성하는 부분.
+        // 전화번호 형식 검증
+        const phoneInput = document.querySelector('input[name="manager_phone"]');
+        phoneInput.addEventListener('input', function(e) {
+          this.value = this.value.replace(/[^0-9-]/g, '');
+        });
 
-            // 각 주소의 노출 규칙에 따라 주소를 조합한다.
-            // 내려오는 변수가 값이 없는 경우엔 공백('')값을 가지므로, 이를 참고하여 분기 한다.
-            var addr = ""; // 주소 변수
-            var extraAddr = ""; // 참고항목 변수
-
-            //사용자가 선택한 주소 타입에 따라 해당 주소 값을 가져온다.
-            if (data.userSelectedType === "R") {
-              // 사용자가 도로명 주소를 선택했을 경우
-              addr = data.roadAddress;
-            } else {
-              // 사용자가 지번 주소를 선택했을 경우(J)
-              addr = data.jibunAddress;
-            }
-
-            // 사용자가 선택한 주소가 도로명 타입일때 참고항목을 조합한다.
-            if (data.userSelectedType === "R") {
-              // 법정동명이 있을 경우 추가한다. (법정리는 제외)
-              // 법정동의 경우 마지막 문자가 "동/로/가"로 끝난다.
-              if (data.bname !== "" && /[동|로|가]$/g.test(data.bname)) {
-                extraAddr += data.bname;
-              }
-              // 건물명이 있고, 공동주택일 경우 추가한다.
-              if (data.buildingName !== "" && data.apartment === "Y") {
-                extraAddr +=
-                  extraAddr !== ""
-                    ? ", " + data.buildingName
-                    : data.buildingName;
-              }
-              // 표시할 참고항목이 있을 경우, 괄호까지 추가한 최종 문자열을 만든다.
-              //if(extraAddr !== ''){
-              //  extraAddr = ' (' + extraAddr + ')';
-              //}
-              // 참고항목은 상세주소 필드에 넣도록 유도할 수 있음
-            }
-
-            // 우편번호와 주소 정보를 해당 필드에 넣는다.
-            document.getElementById("postcode").value = data.zonecode;
-            document.getElementById("address").value = addr;
-            // 커서를 상세주소 필드로 이동한다.
-            document.getElementById("address_detail").focus();
-          },
-        }).open();
-      }
+        // 약관 전체 동의 기능
+        const checkAll = document.getElementById('checkAll');
+        const termsChecks = document.querySelectorAll('.terms-check');
+        if (checkAll) {
+          checkAll.addEventListener('change', function() {
+            termsChecks.forEach(cb => {
+              cb.checked = checkAll.checked;
+            });
+          });
+          termsChecks.forEach(cb => {
+            cb.addEventListener('change', function() {
+              checkAll.checked = Array.from(termsChecks).every(cb => cb.checked);
+            });
+          });
+        }
+      });
 
       // 페이지 로드 시 실행
       document.addEventListener("DOMContentLoaded", () => {
@@ -452,6 +450,33 @@
         // setupCancelButton(); // 취소 버튼 로직 확인 필요
         // 기타 초기화 로직...
       });
+
+      function execDaumPostcode() {
+        new daum.Postcode({
+          oncomplete: function(data) {
+            document.getElementById('postcode').value = data.zonecode;
+            document.getElementById('address').value = data.address;
+            showMapByAddress(data.address);
+          }
+        }).open();
+      }
+
+      function showMapByAddress(address) {
+        var mapContainer = document.getElementById('map');
+        mapContainer.style.display = 'block';
+        var map = new kakao.maps.Map(mapContainer, {center: new kakao.maps.LatLng(37.5665, 126.9780), level: 3});
+        var geocoder = new kakao.maps.services.Geocoder();
+        geocoder.addressSearch(address, function(result, status) {
+          if (status === kakao.maps.services.Status.OK) {
+            var coords = new kakao.maps.LatLng(result[0].y, result[0].x);
+            var marker = new kakao.maps.Marker({map: map, position: coords});
+            map.setCenter(coords);
+            // 위도/경도 hidden input에 저장
+            document.getElementById('latitude').value = result[0].y;
+            document.getElementById('longitude').value = result[0].x;
+          }
+        });
+      }
     </script>
   </body>
 </html>

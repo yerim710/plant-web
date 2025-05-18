@@ -1,2 +1,0 @@
-status 분포:
-('approved', 3)

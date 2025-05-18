@@ -128,7 +128,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     try {
-      const response = await fetch("http://localhost:5000/api/login", {
+      const response = await fetch("http://172.30.1.17:5000/api/login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -139,7 +139,8 @@ document.addEventListener("DOMContentLoaded", () => {
       const data = await response.json();
 
       if (data.success) {
-        // 로그인 상태 저장
+        // JWT 토큰 저장
+        localStorage.setItem("access_token", data.access_token);
         localStorage.setItem("isLoggedIn", "true");
         localStorage.setItem("currentUser", JSON.stringify(data.user));
 
@@ -152,7 +153,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         showMessage("로그인 성공! 메인 페이지로 이동합니다.");
         setTimeout(() => {
-          window.location.href = "main.html";
+          window.location.href = "/main";
         }, 1000);
       } else {
         showMessage(data.message || "로그인에 실패했습니다.", true);
